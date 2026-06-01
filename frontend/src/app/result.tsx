@@ -3,7 +3,7 @@ import { FreshnessBadge } from "@/components/freshness-badge";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { fishSpecies, getMockScanResult } from "@/constants/fishData";
-import { DetectionResponse } from "@/utils/api";
+import { DetectionResponse, FreshnessResponse } from "@/utils/api";
 import { AnimatedView } from "@/utils/styled";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
@@ -25,9 +25,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
  */
 export default function ResultScreen() {
   const router = useRouter();
-  const { fishId, detection } = useLocalSearchParams<{
+  const { fishId, detection, freshness } = useLocalSearchParams<{
     fishId: string;
     detection?: string;
+    freshness?: string;
   }>();
 
   const detectionResult = useMemo<DetectionResponse | null>(() => {
@@ -39,9 +40,24 @@ export default function ResultScreen() {
     }
   }, [detection]);
 
+  const freshnessResult = useMemo<
+    { eye: FreshnessResponse | null; skin: FreshnessResponse | null } | null
+  >(() => {
+    if (!freshness) return null;
+    try {
+      return JSON.parse(freshness) as {
+        eye: FreshnessResponse | null;
+        skin: FreshnessResponse | null;
+      };
+    } catch {
+      return null;
+    }
+  }, [freshness]);
+
   // Get fish data and scan result
   const fish = fishSpecies.find((f) => f.id === fishId);
-  const scanResult = detectionResult ? null : getMockScanResult(fishId || "1");
+  const scanResult =
+    detectionResult || freshnessResult ? null : getMockScanResult(fishId || "1");
 
   if (!fish) {
     return (
@@ -85,7 +101,71 @@ export default function ResultScreen() {
             </ThemedText>
           </AnimatedView>
 
-          {detectionResult ? (
+          {freshnessResult ? (
+            <>
+              <AnimatedView
+                entering={ZoomIn.delay(200).springify()}
+                className="mb-6 items-center"
+              >
+                <View className="rounded-full px-5 py-2 border bg-emerald-100 border-emerald-300 dark:bg-emerald-900 dark:border-emerald-700">
+                  <ThemedText className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+                    Freshness scores ready
+                  </ThemedText>
+                </View>
+              </AnimatedView>
+
+              <AnimatedView
+                entering={FadeInDown.delay(300)}
+                className="gap-3 mb-6"
+              >
+                <View className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800">
+                  <ThemedText className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                    EYE RESULT
+                  </ThemedText>
+                  <ThemedText className="text-lg font-semibold text-teal-700 dark:text-teal-300">
+                    {freshnessResult.eye?.freshness_label || "Unknown"}
+                  </ThemedText>
+                  <ThemedText className="text-xs text-gray-500 dark:text-gray-400">
+                    Confidence: {freshnessResult.eye?.freshness_confidence ?? 0}
+                  </ThemedText>
+                </View>
+
+                <View className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800">
+                  <ThemedText className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                    SKIN RESULT
+                  </ThemedText>
+                  <ThemedText className="text-lg font-semibold text-teal-700 dark:text-teal-300">
+                    {freshnessResult.skin?.freshness_label || "Unknown"}
+                  </ThemedText>
+                  <ThemedText className="text-xs text-gray-500 dark:text-gray-400">
+                    Confidence: {freshnessResult.skin?.freshness_confidence ?? 0}
+                  </ThemedText>
+                </View>
+
+                <View className="bg-slate-50 dark:bg-gray-900 p-4 rounded-2xl border border-slate-200 dark:border-gray-800">
+                  <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
+                    SEGMENTATION QUALITY
+                  </ThemedText>
+                  <View className="flex-row justify-between">
+                    <ThemedText className="text-xs text-slate-600 dark:text-slate-400">
+                      Eye mask area
+                    </ThemedText>
+                    <ThemedText className="text-xs font-semibold text-slate-800 dark:text-white">
+                      {freshnessResult.eye?.mask_area ?? 0}
+                    </ThemedText>
+                  </View>
+                  <View className="mt-1 flex-row justify-between">
+                    <ThemedText className="text-xs text-slate-600 dark:text-slate-400">
+                      Skin mask area
+                    </ThemedText>
+                    <ThemedText className="text-xs font-semibold text-slate-800 dark:text-white">
+                      {freshnessResult.skin?.mask_area ?? 0}
+                    </ThemedText>
+                  </View>
+                </View>
+              </AnimatedView>
+            </>
+          ) : detectionResult ? (
             <>
               <AnimatedView
                 entering={ZoomIn.delay(200).springify()}

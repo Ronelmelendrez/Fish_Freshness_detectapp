@@ -2,13 +2,24 @@ import { AppHeader } from "@/components/app-header";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { fishSpecies } from "@/constants/fishData";
+import { DEFAULT_THRESHOLDS, isAreaInRange } from "@/utils/autoCapture";
+import { FreshnessResponse, uploadFreshness } from "@/utils/api";
 import { AnimatedText, AnimatedView } from "@/utils/styled";
-import { uploadDetection } from "@/utils/api";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import {
+  getDetectorModel,
+  getLargestBoxArea,
+  loadDetectorModel,
+} from "@/utils/tflite";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { FadeIn, FadeInDown } from "react-native-reanimated";
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useFrameProcessor,
+} from "react-native-vision-camera";
+import { FadeIn, FadeInDown, runOnJS } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 /**
@@ -26,30 +37,44 @@ export default function ScanScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanStep, setScanStep] = useState<"eye" | "body">("eye");
+  const [scanStep, setScanStep] = useState<"eye" | "skin">("eye");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView>(null);
-  const requestedPermissionRef = useRef(false);
+  const [stableCount, setStableCount] = useState(0);
+  const [lastArea, setLastArea] = useState(0);
+  const [modelReady, setModelReady] = useState(false);
+  const [eyeFreshness, setEyeFreshness] = useState<FreshnessResponse | null>(
+    null,
+  );
+  const cameraRef = useRef<Camera>(null);
+  const device = useCameraDevice("back");
+  const { hasPermission, requestPermission } = useCameraPermission();
 
   // Find the fish species from the ID
   const fish = fishSpecies.find((f) => f.id === id);
 
   useEffect(() => {
-    if (!permission) return;
-
-    if (!permission.granted && permission.canAskAgain) {
-      if (!requestedPermissionRef.current) {
-        requestedPermissionRef.current = true;
-        requestPermission();
-      }
-      return;
+    if (!hasPermission) {
+      requestPermission();
     }
+  }, [hasPermission, requestPermission]);
 
-    if (!permission.granted && !permission.canAskAgain) {
-      router.replace("/");
-    }
-  }, [permission, requestPermission, router]);
+  useEffect(() => {
+    let active = true;
+
+    const modelAsset = require("../../../assets/models/eye_skin_detector.tflite");
+
+    loadDetectorModel(modelAsset)
+      .then(() => {
+        if (active) setModelReady(true);
+      })
+      .catch(() => {
+        if (active) setErrorMessage("Failed to load detector model");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!fish) {
     return (
@@ -59,11 +84,21 @@ export default function ScanScreen() {
     );
   }
 
-  if (!permission || !permission.granted) {
+  if (!hasPermission) {
     return null;
   }
 
-  const handleCapture = async () => {
+  if (!device) {
+    return (
+      <ThemedView className="flex-1 justify-center items-center">
+        <ThemedText className="text-red-500">Camera unavailable</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  const thresholds = DEFAULT_THRESHOLDS[scanStep];
+
+  const handleAutoCapture = async () => {
     if (isProcessing || !cameraRef.current) return;
 
     setErrorMessage(null);
@@ -71,26 +106,22 @@ export default function ScanScreen() {
     setIsProcessing(true);
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.6,
-        skipProcessing: true,
+      const photo = await cameraRef.current.takePhoto({
+        qualityPrioritization: "quality",
+        skipMetadata: true,
       });
 
-      setScanProgress(25);
+      setScanProgress(35);
 
-      const expectedPart = scanStep === "eye" ? "eye" : "skin";
-      const targetSpeciesMap: Record<string, string> = {
-        Milkfish: "Bangus",
-        Tilapia: "Tilapia",
-      };
-      const targetSpecies = fish?.name ? targetSpeciesMap[fish.name] : undefined;
-      const response = await uploadDetection(photo.uri, targetSpecies, expectedPart);
+      const response = await uploadFreshness(`file://${photo.path}`);
 
       setScanProgress(100);
       setIsProcessing(false);
+      setStableCount(0);
 
       if (scanStep === "eye") {
-        setScanStep("body");
+        setEyeFreshness(response);
+        setScanStep("skin");
         setScanProgress(0);
         return;
       }
@@ -99,11 +130,15 @@ export default function ScanScreen() {
         pathname: "/result",
         params: {
           fishId: id,
-          detection: JSON.stringify(response),
+          freshness: JSON.stringify({
+            eye: eyeFreshness,
+            skin: response,
+          }),
         },
       });
     } catch (error) {
       setIsProcessing(false);
+      setStableCount(0);
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -111,6 +146,33 @@ export default function ScanScreen() {
       );
     }
   };
+
+  const handleDetectionArea = (area: number) => {
+    setLastArea(area);
+    if (isAreaInRange(area, thresholds)) {
+      setStableCount((prev) => prev + 1);
+    } else {
+      setStableCount(0);
+    }
+  };
+
+  const frameProcessor = useFrameProcessor((frame) => {
+    "worklet";
+    if (!modelReady) return;
+
+    const model = getDetectorModel();
+    if (!model) return;
+
+    const output = model.runSync(frame);
+    const area = getLargestBoxArea(output);
+    runOnJS(handleDetectionArea)(area);
+  }, [modelReady]);
+
+  useEffect(() => {
+    if (stableCount >= thresholds.stableFrames && !isProcessing) {
+      handleAutoCapture();
+    }
+  }, [stableCount, thresholds.stableFrames, isProcessing]);
 
   return (
     <ThemedView className="flex-1 bg-slate-50 dark:bg-gray-950">
@@ -150,19 +212,19 @@ export default function ScanScreen() {
                 </View>
                 <View
                   className={`rounded-full px-3 py-1 ${
-                    scanStep === "body"
+                    scanStep === "skin"
                       ? "bg-teal-600"
                       : "bg-slate-200/80 dark:bg-gray-800"
                   }`}
                 >
                   <ThemedText
                     className={`text-[11px] font-semibold ${
-                      scanStep === "body"
+                      scanStep === "skin"
                         ? "text-white"
                         : "text-gray-700 dark:text-gray-200"
                     }`}
                   >
-                    Step 2: Body
+                    Step 2: Skin
                   </ThemedText>
                 </View>
               </View>
@@ -177,10 +239,13 @@ export default function ScanScreen() {
             <View className="w-full rounded-3xl bg-white/90 dark:bg-gray-900/80 border border-white/60 dark:border-gray-800 p-6 shadow-lg">
               <View className="w-full items-center">
                 <View className="relative w-64 h-64 rounded-full border-4 border-teal-300/80 dark:border-teal-600 bg-gray-900 justify-center items-center overflow-hidden">
-                  <CameraView
+                  <Camera
                     ref={cameraRef}
-                    facing="back"
-                    animateShutter={false}
+                    device={device}
+                    isActive
+                    photo
+                    frameProcessor={frameProcessor}
+                    frameProcessorFps={12}
                     style={{ width: "100%", height: "100%" }}
                   />
                   <AnimatedView
@@ -196,7 +261,7 @@ export default function ScanScreen() {
                     <ThemedText className="text-xs font-semibold text-white/80">
                       {scanStep === "eye"
                         ? "Center the fish eye"
-                        : "Capture the body texture"}
+                        : "Capture the skin texture"}
                     </ThemedText>
                   </View>
 
@@ -213,12 +278,12 @@ export default function ScanScreen() {
                     Scan mode
                   </ThemedText>
                   <ThemedText className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {scanStep === "eye" ? "Eye scan" : "Body scan"}
+                    {scanStep === "eye" ? "Eye scan" : "Skin scan"}
                   </ThemedText>
                 </View>
                 <View className="rounded-full bg-emerald-100/80 dark:bg-emerald-900/40 px-3 py-1">
                   <ThemedText className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                    Ready
+                    {isProcessing ? "Uploading" : "Auto capture"}
                   </ThemedText>
                 </View>
               </View>
@@ -263,18 +328,6 @@ export default function ScanScreen() {
 
           {/* Action Buttons */}
           <AnimatedView entering={FadeInDown.delay(400)} className="gap-3 mb-4">
-            {!isProcessing && (
-              <Pressable
-                onPress={handleCapture}
-                className="bg-gradient-to-r from-teal-600 to-cyan-600 dark:from-teal-700 dark:to-cyan-700 py-4 px-6 rounded-2xl items-center shadow-lg active:shadow-md active:opacity-90"
-                android_ripple={{ color: "rgba(255, 255, 255, 0.2)" }}
-              >
-                <ThemedText className="text-white font-bold text-lg">
-                  {scanStep === "eye" ? "👁️ Capture Eye" : "📸 Capture Body"}
-                </ThemedText>
-              </Pressable>
-            )}
-
             {isProcessing && (
               <Pressable
                 onPress={() => setIsProcessing(false)}
@@ -311,7 +364,14 @@ export default function ScanScreen() {
             <ThemedText className="text-xs text-blue-700 dark:text-blue-300 text-center">
               {scanStep === "eye"
                 ? "ℹ️ Focus on the eye for clarity and reflection."
-                : "ℹ️ Capture the body surface with even lighting."}
+                : "ℹ️ Capture the skin surface with even lighting."}
+            </ThemedText>
+          </View>
+
+          <View className="p-3 bg-slate-100 dark:bg-gray-800 rounded-xl mb-4">
+            <ThemedText className="text-xs text-gray-600 dark:text-gray-300 text-center">
+              Live size score: {Math.round(lastArea)} px • Waiting for stable
+              distance
             </ThemedText>
           </View>
         </ScrollView>

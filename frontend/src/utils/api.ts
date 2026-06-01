@@ -11,6 +11,14 @@ export interface DetectionResponse {
   reason?: string | null;
 }
 
+export interface FreshnessResponse {
+  freshness_label: string | null;
+  freshness_confidence: number | null;
+  segmentation_confidence: number;
+  mask_area: number;
+  reason?: string | null;
+}
+
 const resolveHost = () => {
   const hostUri = Constants.expoConfig?.hostUri;
   if (!hostUri) return null;
@@ -62,4 +70,29 @@ export const uploadDetection = async (
   }
 
   return (await response.json()) as DetectionResponse;
+};
+
+export const uploadFreshness = async (
+  imageUri: string,
+): Promise<FreshnessResponse> => {
+  const url = new URL("/freshness", getApiBaseUrl());
+
+  const form = new FormData();
+  form.append("image", {
+    uri: imageUri,
+    name: "capture.jpg",
+    type: "image/jpeg",
+  } as unknown as Blob);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    body: form,
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || "Freshness failed");
+  }
+
+  return (await response.json()) as FreshnessResponse;
 };

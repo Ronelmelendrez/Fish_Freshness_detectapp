@@ -62,6 +62,22 @@ Example response:
 }
 ```
 
+`POST /freshness`
+
+- Multipart form-data field: `image` (file)
+
+Example response:
+
+```json
+{
+  "freshness_label": "Fresh",
+  "freshness_confidence": 0.91,
+  "segmentation_confidence": 0.87,
+  "mask_area": 15422,
+  "reason": null
+}
+```
+
 ## Docker
 
 ```bash
@@ -74,3 +90,17 @@ docker run --rm -p 8000:8000 fish-detect-backend
 - The response never returns bounding box coordinates.
 - `ready_for_capture` is true only when detection passes all quality checks.
 - This project pins CPU-only PyTorch wheels in `requirements.txt` for Windows stability.
+
+## Calibration Script
+
+Compute size thresholds from your dataset to drive auto-capture:
+
+```bash
+python scripts/calibrate_size_thresholds.py --coco-json path/to/annotations.json --class-id 0
+```
+
+For YOLO labels:
+
+```bash
+python scripts/calibrate_size_thresholds.py --yolo-labels path/to/labels --images path/to/images --class-id 0
+```

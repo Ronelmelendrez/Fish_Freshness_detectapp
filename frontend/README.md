@@ -16,6 +16,30 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+## Native Modules (Auto-Capture)
+
+This app uses `react-native-vision-camera` and `react-native-fast-tflite` for
+on-device size estimation. These require a development build or bare workflow.
+
+```bash
+npx expo prebuild
+npx expo run:android
+```
+
+Place your detector model at:
+
+```
+assets/models/eye_skin_detector.tflite
+```
+
+## Backend اتصال
+
+Set your backend URL before starting the app (works with Expo Go / dev builds):
+
+```bash
+EXPO_PUBLIC_API_BASE_URL=http://<YOUR-LAN-IP>:8000
+```
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)

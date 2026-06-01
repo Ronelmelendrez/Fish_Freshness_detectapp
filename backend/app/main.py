@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.detection import router as detection_router
+from app.api.freshness import router as freshness_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,3 +24,4 @@ app.add_middleware(
 )
 
 app.include_router(detection_router)
+app.include_router(freshness_router)
