@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { fishSpecies } from "@/constants/fishData";
 import { AnimatedText, AnimatedView } from "@/utils/styled";
+import { uploadDetection } from "@/utils/api";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -26,41 +27,13 @@ export default function ScanScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStep, setScanStep] = useState<"eye" | "body">("eye");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const requestedPermissionRef = useRef(false);
 
   // Find the fish species from the ID
   const fish = fishSpecies.find((f) => f.id === id);
-
-  // Simulate scanning animation
-  useEffect(() => {
-    if (!isProcessing) return;
-
-    const interval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 100) {
-          setIsProcessing(false);
-          if (scanStep === "eye") {
-            setScanStep("body");
-            setScanProgress(0);
-          } else {
-            // Auto-navigate to result after body scan completes
-            setTimeout(() => {
-              router.push({
-                pathname: "/result",
-                params: { fishId: id },
-              });
-            }, 500);
-          }
-          return 100;
-        }
-        return prev + Math.random() * 30;
-      });
-    }, 600);
-
-    return () => clearInterval(interval);
-  }, [isProcessing, id, router, scanStep]);
 
   useEffect(() => {
     if (!permission) return;
@@ -93,16 +66,49 @@ export default function ScanScreen() {
   const handleCapture = async () => {
     if (isProcessing || !cameraRef.current) return;
 
+    setErrorMessage(null);
     setScanProgress(0);
     setIsProcessing(true);
 
     try {
-      await cameraRef.current.takePictureAsync({
+      const photo = await cameraRef.current.takePictureAsync({
         quality: 0.6,
         skipProcessing: true,
       });
-    } catch {
+
+      setScanProgress(25);
+
+      const expectedPart = scanStep === "eye" ? "eye" : "skin";
+      const targetSpeciesMap: Record<string, string> = {
+        Milkfish: "Bangus",
+        Tilapia: "Tilapia",
+      };
+      const targetSpecies = fish?.name ? targetSpeciesMap[fish.name] : undefined;
+      const response = await uploadDetection(photo.uri, targetSpecies, expectedPart);
+
+      setScanProgress(100);
       setIsProcessing(false);
+
+      if (scanStep === "eye") {
+        setScanStep("body");
+        setScanProgress(0);
+        return;
+      }
+
+      router.push({
+        pathname: "/result",
+        params: {
+          fishId: id,
+          detection: JSON.stringify(response),
+        },
+      });
+    } catch (error) {
+      setIsProcessing(false);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to upload image",
+      );
     }
   };
 
@@ -291,6 +297,14 @@ export default function ScanScreen() {
               </ThemedText>
             </Pressable>
           </AnimatedView>
+
+          {errorMessage && (
+            <View className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-800 dark:bg-rose-900">
+              <ThemedText className="text-xs text-rose-700 dark:text-rose-200 text-center">
+                {errorMessage}
+              </ThemedText>
+            </View>
+          )}
 
           {/* Info Box */}
           <View className="p-4 bg-blue-50 dark:bg-blue-900 rounded-xl mb-4">
