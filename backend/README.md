@@ -16,6 +16,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Windows activation:
+
+```powershell
+\venv\Scripts\Activate.ps1
+```
+
+```cmd
+venv\Scripts\activate.bat
+```
+
 Copy environment settings:
 
 ```bash
@@ -63,3 +73,4 @@ docker run --rm -p 8000:8000 fish-detect-backend
 
 - The response never returns bounding box coordinates.
 - `ready_for_capture` is true only when detection passes all quality checks.
+- This project pins CPU-only PyTorch wheels in `requirements.txt` for Windows stability.
