@@ -11,7 +11,12 @@ class Settings(BaseSettings):
     blur_threshold: float = 100.0
     center_margin: float = 0.2
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="",
+        case_sensitive=False,
+        protected_namespaces=(),
+    )
 
 
 settings = Settings()
