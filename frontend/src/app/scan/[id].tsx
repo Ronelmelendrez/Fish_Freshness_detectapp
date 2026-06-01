@@ -169,7 +169,7 @@ export default function ScanScreen() {
   };
 
   const frameProcessor = useFrameProcessor(
-    (frame) => {
+    (frame: Frame) => {
       "worklet";
       if (!modelReady || useMockCamera) return;
 
