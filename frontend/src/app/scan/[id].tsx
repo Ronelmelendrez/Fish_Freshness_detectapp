@@ -11,7 +11,6 @@ import {
   loadDetectorModel,
 } from "@/utils/tflite";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import type { ElementRef } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { FadeIn, FadeInDown, runOnJS } from "react-native-reanimated";
@@ -46,7 +45,7 @@ export default function ScanScreen() {
   const [eyeFreshness, setEyeFreshness] = useState<FreshnessResponse | null>(
     null,
   );
-  const cameraRef = useRef<ElementRef<typeof Camera> | null>(null);
+  const cameraRef = useRef<CameraType | null>(null);
   const device = useCameraDevice("back");
   const { hasPermission, requestPermission } = useCameraPermission();
   const useMockCamera =
@@ -103,7 +102,8 @@ export default function ScanScreen() {
   const thresholds = DEFAULT_THRESHOLDS[scanStep];
 
   const handleAutoCapture = async () => {
-    if (isProcessing || !cameraRef.current) return;
+    const camera = cameraRef.current;
+    if (isProcessing || (!camera && !useMockCamera)) return;
 
     setErrorMessage(null);
     setScanProgress(0);
@@ -113,7 +113,7 @@ export default function ScanScreen() {
       const photoUri = useMockCamera
         ? Image.resolveAssetSource(mockImage)?.uri
         : (
-            await cameraRef.current?.takePhoto({
+            await camera?.takePhoto({
               qualityPrioritization: "quality",
               skipMetadata: true,
             })
