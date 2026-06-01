@@ -2,8 +2,8 @@ import { AppHeader } from "@/components/app-header";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { fishSpecies } from "@/constants/fishData";
-import { DEFAULT_THRESHOLDS, isAreaInRange } from "@/utils/autoCapture";
 import { FreshnessResponse, uploadFreshness } from "@/utils/api";
+import { DEFAULT_THRESHOLDS, isAreaInRange } from "@/utils/autoCapture";
 import { AnimatedText, AnimatedView } from "@/utils/styled";
 import {
   getDetectorModel,
@@ -11,16 +11,17 @@ import {
   loadDetectorModel,
 } from "@/utils/tflite";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import type { ElementRef } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Image, Pressable, ScrollView, View } from "react-native";
+import { FadeIn, FadeInDown, runOnJS } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
   useFrameProcessor,
 } from "react-native-vision-camera";
-import { FadeIn, FadeInDown, runOnJS } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 /**
  * Scan Screen
@@ -45,18 +46,21 @@ export default function ScanScreen() {
   const [eyeFreshness, setEyeFreshness] = useState<FreshnessResponse | null>(
     null,
   );
-  const cameraRef = useRef<Camera>(null);
+  const cameraRef = useRef<ElementRef<typeof Camera> | null>(null);
   const device = useCameraDevice("back");
   const { hasPermission, requestPermission } = useCameraPermission();
+  const useMockCamera =
+    process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true" || __DEV__;
+  const mockImage = require("../../../assets/images/tutorial-web.png");
 
   // Find the fish species from the ID
   const fish = fishSpecies.find((f) => f.id === id);
 
   useEffect(() => {
-    if (!hasPermission) {
+    if (!hasPermission && !useMockCamera) {
       requestPermission();
     }
-  }, [hasPermission, requestPermission]);
+  }, [hasPermission, requestPermission, useMockCamera]);
 
   useEffect(() => {
     let active = true;
@@ -84,11 +88,11 @@ export default function ScanScreen() {
     );
   }
 
-  if (!hasPermission) {
+  if (!hasPermission && !useMockCamera) {
     return null;
   }
 
-  if (!device) {
+  if (!device && !useMockCamera) {
     return (
       <ThemedView className="flex-1 justify-center items-center">
         <ThemedText className="text-red-500">Camera unavailable</ThemedText>
@@ -106,14 +110,24 @@ export default function ScanScreen() {
     setIsProcessing(true);
 
     try {
-      const photo = await cameraRef.current.takePhoto({
-        qualityPrioritization: "quality",
-        skipMetadata: true,
-      });
+      const photoUri = useMockCamera
+        ? Image.resolveAssetSource(mockImage)?.uri
+        : (
+            await cameraRef.current?.takePhoto({
+              qualityPrioritization: "quality",
+              skipMetadata: true,
+            })
+          )?.path;
+
+      if (!photoUri) {
+        throw new Error("Unable to access camera image");
+      }
 
       setScanProgress(35);
 
-      const response = await uploadFreshness(`file://${photo.path}`);
+      const response = await uploadFreshness(
+        useMockCamera ? photoUri : `file://${photoUri}`,
+      );
 
       setScanProgress(100);
       setIsProcessing(false);
@@ -140,9 +154,7 @@ export default function ScanScreen() {
       setIsProcessing(false);
       setStableCount(0);
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to upload image",
+        error instanceof Error ? error.message : "Unable to upload image",
       );
     }
   };
@@ -156,17 +168,20 @@ export default function ScanScreen() {
     }
   };
 
-  const frameProcessor = useFrameProcessor((frame) => {
-    "worklet";
-    if (!modelReady) return;
+  const frameProcessor = useFrameProcessor(
+    (frame) => {
+      "worklet";
+      if (!modelReady || useMockCamera) return;
 
-    const model = getDetectorModel();
-    if (!model) return;
+      const model = getDetectorModel();
+      if (!model) return;
 
-    const output = model.runSync(frame);
-    const area = getLargestBoxArea(output);
-    runOnJS(handleDetectionArea)(area);
-  }, [modelReady]);
+      const output = model.runSync(frame);
+      const area = getLargestBoxArea(output);
+      runOnJS(handleDetectionArea)(area);
+    },
+    [modelReady, useMockCamera],
+  );
 
   useEffect(() => {
     if (stableCount >= thresholds.stableFrames && !isProcessing) {
@@ -239,15 +254,23 @@ export default function ScanScreen() {
             <View className="w-full rounded-3xl bg-white/90 dark:bg-gray-900/80 border border-white/60 dark:border-gray-800 p-6 shadow-lg">
               <View className="w-full items-center">
                 <View className="relative w-64 h-64 rounded-full border-4 border-teal-300/80 dark:border-teal-600 bg-gray-900 justify-center items-center overflow-hidden">
-                  <Camera
-                    ref={cameraRef}
-                    device={device}
-                    isActive
-                    photo
-                    frameProcessor={frameProcessor}
-                    frameProcessorFps={12}
-                    style={{ width: "100%", height: "100%" }}
-                  />
+                  {useMockCamera ? (
+                    <Image
+                      source={mockImage}
+                      resizeMode="cover"
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  ) : (
+                    <Camera
+                      ref={cameraRef}
+                      device={device}
+                      isActive
+                      photo
+                      frameProcessor={frameProcessor}
+                      frameProcessorFps={12}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  )}
                   <AnimatedView
                     className="absolute inset-0 bg-gradient-to-b from-transparent via-teal-200/50 dark:via-teal-700/50 to-transparent opacity-40"
                     style={{
