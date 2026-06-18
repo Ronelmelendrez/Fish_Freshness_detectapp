@@ -29,7 +29,7 @@
     },
     "plugins": [
       "expo-router",
-      "react-native-vision-camera",
+      "expo-camera",
       [
         "expo-splash-screen",
         {

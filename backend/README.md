@@ -1,58 +1,74 @@
-# Fish Detection Backend
+# Fishdectapp Backend
 
-Minimal FastAPI backend for fish species detection using YOLOv8.
+AI-powered fish freshness detection backend using FastAPI and YOLOv11-seg.
 
-## Requirements
+## Setup
 
-- Python 3.10+
-- A YOLOv8 model file at `models/yolov8_fish.pt`
-
-## Setup (Local)
+### 1. Create Virtual Environment
 
 ```bash
-cd backend
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### 2. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-Windows activation:
+### 3. Configure Environment
 
-```powershell
-\venv\Scripts\Activate.ps1
-```
-
-```cmd
-venv\Scripts\activate.bat
-```
-
-Copy environment settings:
+Copy `.env.example` to `.env` and update the values:
 
 ```bash
 cp .env.example .env
 ```
 
-Run the API:
+### 4. Add Model File
+
+Place your trained `best-seg.pt` model file in the `models/` directory.
+
+### 5. Run the Server
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open http://localhost:8000/docs.
+## API Endpoints
 
-## Endpoint
+### Health Check
 
-`POST /detect`
+```
+GET /health
+```
 
-- Multipart form-data field: `image` (file)
-- Optional query params: `target_species`, `expected_part` (eye or skin)
-
-Example response:
-
+Response:
 ```json
 {
-  "detected_species": "Bangus",
+  "status": "healthy"
+}
+```
+
+### Detect Fish Freshness
+
+```
+POST /api/v1/detect
+```
+
+Query Parameters:
+- `target_species` (optional): Expected fish species (e.g., "Roughear_scad")
+- `expected_part` (optional): Expected part to scan ("eye" or "skin")
+
+Request Body:
+- `image`: Multipart form data with the fish image
+
+Response:
+```json
+{
+  "detected_species": "Roughear_scad",
   "detected_part": "eye",
+  "freshness": "fresh",
   "confidence": 0.92,
   "is_blurry": false,
   "is_centered": true,
@@ -62,45 +78,43 @@ Example response:
 }
 ```
 
-`POST /freshness`
-
-- Multipart form-data field: `image` (file)
-
-Example response:
-
-```json
-{
-  "freshness_label": "Fresh",
-  "freshness_confidence": 0.91,
-  "segmentation_confidence": 0.87,
-  "mask_area": 15422,
-  "reason": null
-}
-```
-
 ## Docker
 
-```bash
-docker build -t fish-detect-backend .
-docker run --rm -p 8000:8000 fish-detect-backend
-```
-
-## Notes
-
-- The response never returns bounding box coordinates.
-- `ready_for_capture` is true only when detection passes all quality checks.
-- This project pins CPU-only PyTorch wheels in `requirements.txt` for Windows stability.
-
-## Calibration Script
-
-Compute size thresholds from your dataset to drive auto-capture:
+### Build Image
 
 ```bash
-python scripts/calibrate_size_thresholds.py --coco-json path/to/annotations.json --class-id 0
+docker build -t fishdectapp-backend .
 ```
 
-For YOLO labels:
+### Run Container
 
 ```bash
-python scripts/calibrate_size_thresholds.py --yolo-labels path/to/labels --images path/to/images --class-id 0
+docker run -p 8000:8000 fishdectapp-backend
 ```
+
+## Model Classes (12)
+
+The model should be trained with these 12 classes:
+
+1. Roughear_scad_eye_fresh
+2. Roughear_scad_eye_spoiled
+3. Bigeye_scad_eye_fresh
+4. Bigeye_scad_eye_spoiled
+5. Red_mullet_eye_fresh
+6. Red_mullet_eye_spoiled
+7. Roughear_scad_skin_fresh
+8. Roughear_scad_skin_spoiled
+9. Bigeye_scad_skin_fresh
+10. Bigeye_scad_skin_spoiled
+11. Red_mullet_skin_fresh
+12. Red_mullet_skin_spoiled
+
+## Auto-Capture Conditions
+
+The `ready_for_capture` flag is `true` when:
+
+- ✅ Species matches target (if provided)
+- ✅ Part matches expected (if provided)
+- ✅ Confidence ≥ 0.8
+- ✅ Image is not blurry
+- ✅ Fish is centered in frame

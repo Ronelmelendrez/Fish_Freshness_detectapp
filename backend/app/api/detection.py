@@ -19,6 +19,7 @@ router = APIRouter()
 class DetectionResponse(BaseModel):
     detected_species: Optional[str] = Field(default=None)
     detected_part: Optional[str] = Field(default=None)
+    freshness: Optional[str] = Field(default=None)
     confidence: Optional[float] = Field(default=None)
     is_blurry: bool
     is_centered: bool
@@ -27,14 +28,14 @@ class DetectionResponse(BaseModel):
     reason: Optional[str] = Field(default=None)
 
 
-@router.post("/detect", response_model=DetectionResponse)
+@router.post("/api/v1/detect", response_model=DetectionResponse)
 async def detect(
     image: UploadFile = File(...),
     target_species: Optional[str] = None,
     expected_part: Optional[str] = None,
     model: YOLO = Depends(get_model),
 ) -> DetectionResponse:
-    """Detect fish species and part from an uploaded image."""
+    """Detect fish species, part, and freshness from an uploaded image."""
 
     try:
         content = await image.read()
@@ -55,12 +56,13 @@ async def detect(
         raise HTTPException(status_code=500, detail="Detection failed") from exc
 
     logger.info(
-        "Detect request filename=%s size=%sx%s species=%s part=%s confidence=%s",
+        "Detect request filename=%s size=%sx%s species=%s part=%s freshness=%s confidence=%s",
         image.filename,
         image_rgb.shape[1],
         image_rgb.shape[0],
         result.detected_species,
         result.detected_part,
+        result.freshness,
         result.confidence,
     )
 
