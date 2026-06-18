@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState, useEffect } from "react";
@@ -19,16 +19,52 @@ export default function SkinScanScreen() {
   const [guidance, setGuidance] = useState("Get ready to scan...");
   const [confidence, setConfidence] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
-  const [scanLine, setScanLine] = useState(0);
+  
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (scanState !== "scanning") return;
 
-    const interval = setInterval(() => {
-      setScanLine((prev) => (prev + 1) % 100);
-    }, 30);
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
 
-    return () => clearInterval(interval);
+    return () => pulse.stop();
+  }, [scanState]);
+
+  useEffect(() => {
+    if (scanState !== "scanning") return;
+
+    const scanLine = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    scanLine.start();
+
+    return () => scanLine.stop();
   }, [scanState]);
 
   useEffect(() => {
@@ -134,7 +170,8 @@ export default function SkinScanScreen() {
         onCameraReady={() => setCameraReady(true)}
       />
 
-      <View className="absolute inset-0 bg-black/30">
+      <View className="absolute inset-0 bg-black/20">
+        {/* Header */}
         <View className="flex-row justify-between items-center p-6 pt-16">
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center">
             <Feather name="arrow-left" size={24} color="#fff" />
@@ -150,28 +187,65 @@ export default function SkinScanScreen() {
           </View>
         </View>
 
+        {/* Skin Patch Scan Frame */}
         <View className="flex-1 justify-center items-center">
-          <View className="absolute top-1/4 left-5 w-12 h-12 border-t-3 border-l-3 border-teal-500" />
-          <View className="absolute top-1/4 right-5 w-12 h-12 border-t-3 border-r-3 border-teal-500" />
-          <View className="absolute bottom-1/4 left-5 w-12 h-12 border-b-3 border-l-3 border-teal-500" />
-          <View className="absolute bottom-1/4 right-5 w-12 h-12 border-b-3 border-r-3 border-teal-500" />
-          
-          {scanState === "scanning" && (
-            <View 
-              className="absolute w-56 h-0.5 bg-teal-500"
-              style={{ top: `${25 + (scanLine * 0.5)}%` }}
-            />
-          )}
-          
-          {scanState === "detected" && (
-            <View className="absolute items-center">
-              <View className="w-20 h-20 rounded-full bg-teal-500/30 justify-center items-center">
-                <Feather name="check" size={40} color="#14b8a6" />
+          <Animated.View 
+            className="items-center justify-center"
+            style={{
+              transform: [{ scale: scanState === "scanning" ? pulseAnim : 1 }],
+              opacity: scanState === "ready" ? 0.5 : 1,
+            }}
+          >
+            {/* Skin patch shape - organic irregular shape */}
+            <View className="relative w-56 h-56 items-center justify-center">
+              {/* Outer skin texture border - organic shape */}
+              <View className="absolute inset-0 border-4 border-teal-500 rounded-[40px] bg-teal-500/5" />
+              
+              {/* Inner texture lines - representing skin texture */}
+              <View className="absolute top-8 left-8 right-8 h-px bg-teal-500/30" />
+              <View className="absolute top-16 left-6 right-6 h-px bg-teal-500/20" />
+              <View className="absolute top-24 left-10 right-10 h-px bg-teal-500/30" />
+              <View className="absolute top-32 left-8 right-8 h-px bg-teal-500/20" />
+              <View className="absolute top-40 left-6 right-6 h-px bg-teal-500/30" />
+              
+              {/* Scale-like pattern */}
+              <View className="absolute top-12 left-12 w-8 h-8 border border-teal-500/40 rounded-lg rotate-12" />
+              <View className="absolute top-20 right-12 w-8 h-8 border border-teal-500/40 rounded-lg -rotate-12" />
+              <View className="absolute bottom-16 left-16 w-8 h-8 border border-teal-500/40 rounded-lg rotate-6" />
+              <View className="absolute bottom-24 right-16 w-8 h-8 border border-teal-500/40 rounded-lg -rotate-6" />
+              
+              {/* Center detection zone */}
+              <View className={`w-20 h-20 rounded-2xl border-4 ${scanState === "detected" ? "border-emerald-400 bg-emerald-400/20" : "border-teal-400/50"} items-center justify-center`}>
+                <Feather name="layers" size={32} color={scanState === "detected" ? "#34d399" : "#14b8a6"} />
               </View>
+              
+              {/* Scan line */}
+              {scanState === "scanning" && (
+                <Animated.View 
+                  className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent"
+                  style={{
+                    top: scanLineAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["15%", "85%"],
+                    }),
+                  }}
+                />
+              )}
+              
+              {/* Detected checkmark */}
+              {scanState === "detected" && (
+                <View className="absolute inset-0 items-center justify-center">
+                  <Feather name="check-circle" size={48} color="#34d399" />
+                </View>
+              )}
             </View>
-          )}
+          </Animated.View>
+          
+          {/* Label */}
+          <Text className="text-white/60 text-sm mt-4 font-medium">SKIN SCAN</Text>
         </View>
 
+        {/* Status */}
         <View className="items-center py-4">
           {scanState === "ready" && (
             <View className="bg-black/50 px-6 py-3 rounded-lg">
@@ -195,9 +269,9 @@ export default function SkinScanScreen() {
           )}
           
           {scanState === "detected" && (
-            <View className="bg-teal-500/80 px-6 py-3 rounded-lg">
+            <View className="bg-emerald-500/80 px-6 py-3 rounded-lg">
               <Text className="text-white text-lg font-bold text-center">
-                ✓ Detected!
+                ✓ Skin Detected!
               </Text>
             </View>
           )}
@@ -211,6 +285,7 @@ export default function SkinScanScreen() {
           )}
         </View>
 
+        {/* Step indicator */}
         <View className="flex-row justify-center pb-8">
           <View className={`px-4 py-2 rounded-full ${scanState === "scanning" ? "bg-teal-600" : "bg-white/20"}`}>
             <Text className={`text-sm font-semibold ${scanState === "scanning" ? "text-white" : "text-white/70"}`}>

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState, useEffect } from "react";
@@ -19,24 +19,59 @@ export default function EyeScanScreen() {
   const [guidance, setGuidance] = useState("Get ready to scan...");
   const [confidence, setConfidence] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
-  const [scanLine, setScanLine] = useState(0);
+  
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
 
-  // Animate scan line
+  // Pulse animation for scanning
   useEffect(() => {
     if (scanState !== "scanning") return;
 
-    const interval = setInterval(() => {
-      setScanLine((prev) => (prev + 1) % 100);
-    }, 30);
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
 
-    return () => clearInterval(interval);
+    return () => pulse.stop();
   }, [scanState]);
 
-  // Camera ready handler - show ready state
+  // Scan line animation
+  useEffect(() => {
+    if (scanState !== "scanning") return;
+
+    const scanLine = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    scanLine.start();
+
+    return () => scanLine.stop();
+  }, [scanState]);
+
   useEffect(() => {
     if (!cameraReady || !permission?.granted) return;
 
-    // Show "ready" state for 1.5 seconds before starting scan
     const readyTimer = setTimeout(() => {
       setScanState("scanning");
       setGuidance("Position the fish eye in the frame");
@@ -47,12 +82,10 @@ export default function EyeScanScreen() {
   }, [cameraReady, permission?.granted]);
 
   const startDetection = async () => {
-    // Don't capture if not in scanning state
     if (scanState !== "scanning") return;
 
     const uri = await captureLowRes(cameraRef);
     if (!uri) {
-      // Retry if capture failed
       setTimeout(startDetection, 500);
       return;
     }
@@ -68,16 +101,13 @@ export default function EyeScanScreen() {
       setConfidence(response.confidence || 0);
 
       if (response.ready_for_capture) {
-        // Detected! Show detected state
         setScanState("detected");
         
-        // Brief pause then process
         setTimeout(() => {
           setScanState("processing");
           processImage();
         }, 500);
       } else {
-        // Continue scanning
         setTimeout(startDetection, 800);
       }
     } catch (error) {
@@ -142,7 +172,7 @@ export default function EyeScanScreen() {
         onCameraReady={() => setCameraReady(true)}
       />
 
-      <View className="absolute inset-0 bg-black/30">
+      <View className="absolute inset-0 bg-black/20">
         {/* Header */}
         <View className="flex-row justify-between items-center p-6 pt-16">
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center">
@@ -159,30 +189,57 @@ export default function EyeScanScreen() {
           </View>
         </View>
 
-        {/* Scan Frame */}
+        {/* Eye-shaped Scan Frame */}
         <View className="flex-1 justify-center items-center">
-          {/* Corner brackets - always visible */}
-          <View className="absolute top-1/4 left-5 w-12 h-12 border-t-3 border-l-3 border-teal-500" />
-          <View className="absolute top-1/4 right-5 w-12 h-12 border-t-3 border-r-3 border-teal-500" />
-          <View className="absolute bottom-1/4 left-5 w-12 h-12 border-b-3 border-l-3 border-teal-500" />
-          <View className="absolute bottom-1/4 right-5 w-12 h-12 border-b-3 border-r-3 border-teal-500" />
-          
-          {/* Scan line animation - only when scanning */}
-          {scanState === "scanning" && (
-            <View 
-              className="absolute w-56 h-0.5 bg-teal-500"
-              style={{ top: `${25 + (scanLine * 0.5)}%` }}
-            />
-          )}
-          
-          {/* Detected indicator */}
-          {scanState === "detected" && (
-            <View className="absolute items-center">
-              <View className="w-20 h-20 rounded-full bg-teal-500/30 justify-center items-center">
-                <Feather name="check" size={40} color="#14b8a6" />
+          {/* Outer eye shape - almond/eye shaped */}
+          <Animated.View 
+            className="items-center justify-center"
+            style={{
+              transform: [{ scale: scanState === "scanning" ? pulseAnim : 1 }],
+              opacity: scanState === "ready" ? 0.5 : 1,
+            }}
+          >
+            {/* Eye shape using border radius */}
+            <View className="relative w-64 h-40 items-center justify-center">
+              {/* Left eye curve */}
+              <View className="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-32 border-4 border-teal-500 rounded-l-full border-r-0" />
+              {/* Right eye curve */}
+              <View className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-32 border-4 border-teal-500 rounded-r-full border-l-0" />
+              {/* Top line */}
+              <View className="absolute top-2 left-16 right-16 h-1 bg-teal-500" />
+              {/* Bottom line */}
+              <View className="absolute bottom-2 left-16 right-16 h-1 bg-teal-500" />
+              
+              {/* Inner circle (iris) */}
+              <View className={`w-24 h-24 rounded-full border-4 ${scanState === "detected" ? "border-emerald-400 bg-emerald-400/20" : "border-teal-400/50"}`}>
+                {/* Pupil */}
+                <View className={`w-10 h-10 rounded-full mx-auto mt-7 ${scanState === "detected" ? "bg-emerald-400" : "bg-teal-400/30"}`} />
               </View>
+              
+              {/* Scan line */}
+              {scanState === "scanning" && (
+                <Animated.View 
+                  className="absolute left-16 right-16 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent"
+                  style={{
+                    top: scanLineAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["10%", "85%"],
+                    }),
+                  }}
+                />
+              )}
+              
+              {/* Detected checkmark */}
+              {scanState === "detected" && (
+                <View className="absolute inset-0 items-center justify-center">
+                  <Feather name="check-circle" size={48} color="#34d399" />
+                </View>
+              )}
             </View>
-          )}
+          </Animated.View>
+          
+          {/* Label */}
+          <Text className="text-white/60 text-sm mt-4 font-medium">EYE SCAN</Text>
         </View>
 
         {/* Status */}
@@ -209,9 +266,9 @@ export default function EyeScanScreen() {
           )}
           
           {scanState === "detected" && (
-            <View className="bg-teal-500/80 px-6 py-3 rounded-lg">
+            <View className="bg-emerald-500/80 px-6 py-3 rounded-lg">
               <Text className="text-white text-lg font-bold text-center">
-                ✓ Detected!
+                ✓ Eye Detected!
               </Text>
             </View>
           )}
