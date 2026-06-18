@@ -15,13 +15,11 @@ export default function SkinScanScreen() {
   const currentSpecies = useScanStore((state) => state.currentSpecies);
   const setSkinResult = useScanStore((state) => state.setSkinResult);
 
-  const [scanState, setScanState] = useState<"scanning" | "detected" | "processing">("scanning");
-  const [guidance, setGuidance] = useState("Position the fish skin in the frame");
+  const [scanState, setScanState] = useState<"ready" | "scanning" | "detected" | "processing">("ready");
+  const [guidance, setGuidance] = useState("Get ready to scan...");
   const [confidence, setConfidence] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [scanLine, setScanLine] = useState(0);
-
-  const WARMUP_DELAY = 1000;
 
   useEffect(() => {
     if (scanState !== "scanning") return;
@@ -36,11 +34,13 @@ export default function SkinScanScreen() {
   useEffect(() => {
     if (!cameraReady || !permission?.granted) return;
 
-    const warmupTimer = setTimeout(() => {
+    const readyTimer = setTimeout(() => {
+      setScanState("scanning");
+      setGuidance("Position the fish skin in the frame");
       startDetection();
-    }, WARMUP_DELAY);
+    }, 1500);
 
-    return () => clearTimeout(warmupTimer);
+    return () => clearTimeout(readyTimer);
   }, [cameraReady, permission?.granted]);
 
   const startDetection = async () => {
@@ -135,7 +135,6 @@ export default function SkinScanScreen() {
       />
 
       <View className="absolute inset-0 bg-black/30">
-        {/* Header */}
         <View className="flex-row justify-between items-center p-6 pt-16">
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center">
             <Feather name="arrow-left" size={24} color="#fff" />
@@ -151,7 +150,6 @@ export default function SkinScanScreen() {
           </View>
         </View>
 
-        {/* Scan Frame */}
         <View className="flex-1 justify-center items-center">
           <View className="absolute top-1/4 left-5 w-12 h-12 border-t-3 border-l-3 border-teal-500" />
           <View className="absolute top-1/4 right-5 w-12 h-12 border-t-3 border-r-3 border-teal-500" />
@@ -174,12 +172,19 @@ export default function SkinScanScreen() {
           )}
         </View>
 
-        {/* Status */}
         <View className="items-center py-4">
+          {scanState === "ready" && (
+            <View className="bg-black/50 px-6 py-3 rounded-lg">
+              <Text className="text-white text-lg font-bold text-center">
+                Get Ready...
+              </Text>
+            </View>
+          )}
+          
           {scanState === "scanning" && (
             <>
               <Text className="text-white text-base font-semibold bg-black/50 px-4 py-2 rounded-lg text-center">
-                {cameraReady ? guidance : "Initializing camera..."}
+                {guidance}
               </Text>
               {confidence > 0 && (
                 <Text className="text-teal-500 text-sm mt-2 bg-black/50 px-3 py-1 rounded">
@@ -206,7 +211,6 @@ export default function SkinScanScreen() {
           )}
         </View>
 
-        {/* Step indicator */}
         <View className="flex-row justify-center pb-8">
           <View className={`px-4 py-2 rounded-full ${scanState === "scanning" ? "bg-teal-600" : "bg-white/20"}`}>
             <Text className={`text-sm font-semibold ${scanState === "scanning" ? "text-white" : "text-white/70"}`}>

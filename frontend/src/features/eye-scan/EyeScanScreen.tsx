@@ -15,13 +15,11 @@ export default function EyeScanScreen() {
   const currentSpecies = useScanStore((state) => state.currentSpecies);
   const setEyeResult = useScanStore((state) => state.setEyeResult);
 
-  const [scanState, setScanState] = useState<"scanning" | "detected" | "processing">("scanning");
-  const [guidance, setGuidance] = useState("Position the fish eye in the frame");
+  const [scanState, setScanState] = useState<"ready" | "scanning" | "detected" | "processing">("ready");
+  const [guidance, setGuidance] = useState("Get ready to scan...");
   const [confidence, setConfidence] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [scanLine, setScanLine] = useState(0);
-
-  const WARMUP_DELAY = 1000;
 
   // Animate scan line
   useEffect(() => {
@@ -34,18 +32,22 @@ export default function EyeScanScreen() {
     return () => clearInterval(interval);
   }, [scanState]);
 
-  // Warm-up period before starting detection
+  // Camera ready handler - show ready state
   useEffect(() => {
     if (!cameraReady || !permission?.granted) return;
 
-    const warmupTimer = setTimeout(() => {
+    // Show "ready" state for 1.5 seconds before starting scan
+    const readyTimer = setTimeout(() => {
+      setScanState("scanning");
+      setGuidance("Position the fish eye in the frame");
       startDetection();
-    }, WARMUP_DELAY);
+    }, 1500);
 
-    return () => clearTimeout(warmupTimer);
+    return () => clearTimeout(readyTimer);
   }, [cameraReady, permission?.granted]);
 
   const startDetection = async () => {
+    // Don't capture if not in scanning state
     if (scanState !== "scanning") return;
 
     const uri = await captureLowRes(cameraRef);
@@ -159,13 +161,13 @@ export default function EyeScanScreen() {
 
         {/* Scan Frame */}
         <View className="flex-1 justify-center items-center">
-          {/* Corner brackets */}
+          {/* Corner brackets - always visible */}
           <View className="absolute top-1/4 left-5 w-12 h-12 border-t-3 border-l-3 border-teal-500" />
           <View className="absolute top-1/4 right-5 w-12 h-12 border-t-3 border-r-3 border-teal-500" />
           <View className="absolute bottom-1/4 left-5 w-12 h-12 border-b-3 border-l-3 border-teal-500" />
           <View className="absolute bottom-1/4 right-5 w-12 h-12 border-b-3 border-r-3 border-teal-500" />
           
-          {/* Scan line animation */}
+          {/* Scan line animation - only when scanning */}
           {scanState === "scanning" && (
             <View 
               className="absolute w-56 h-0.5 bg-teal-500"
@@ -185,10 +187,18 @@ export default function EyeScanScreen() {
 
         {/* Status */}
         <View className="items-center py-4">
+          {scanState === "ready" && (
+            <View className="bg-black/50 px-6 py-3 rounded-lg">
+              <Text className="text-white text-lg font-bold text-center">
+                Get Ready...
+              </Text>
+            </View>
+          )}
+          
           {scanState === "scanning" && (
             <>
               <Text className="text-white text-base font-semibold bg-black/50 px-4 py-2 rounded-lg text-center">
-                {cameraReady ? guidance : "Initializing camera..."}
+                {guidance}
               </Text>
               {confidence > 0 && (
                 <Text className="text-teal-500 text-sm mt-2 bg-black/50 px-3 py-1 rounded">
