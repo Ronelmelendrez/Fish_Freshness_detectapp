@@ -23,7 +23,9 @@ class DetectionResponse(BaseModel):
     confidence: Optional[float] = Field(default=None)
     is_blurry: bool
     is_centered: bool
+    is_good_size: bool
     blurriness_score: float
+    size_ratio: float
     ready_for_capture: bool
     reason: Optional[str] = Field(default=None)
 
@@ -56,7 +58,7 @@ async def detect(
         raise HTTPException(status_code=500, detail="Detection failed") from exc
 
     logger.info(
-        "Detect request filename=%s size=%sx%s species=%s part=%s freshness=%s confidence=%s",
+        "Detect request filename=%s size=%sx%s species=%s part=%s freshness=%s confidence=%s ready=%s reason=%s",
         image.filename,
         image_rgb.shape[1],
         image_rgb.shape[0],
@@ -64,6 +66,8 @@ async def detect(
         result.detected_part,
         result.freshness,
         result.confidence,
+        result.ready_for_capture,
+        result.reason,
     )
 
     return DetectionResponse(**result.__dict__)

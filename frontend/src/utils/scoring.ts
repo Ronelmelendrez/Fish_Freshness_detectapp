@@ -42,10 +42,16 @@ export const calculateFreshnessScore = (
  * Get guidance message based on detection response
  */
 export const getGuidanceMessage = (reason: string | null): string => {
-  if (!reason) return "Position the fish in the center";
+  if (!reason) return "Perfect! Hold steady...";
 
   const reasonLower = reason.toLowerCase();
 
+  if (reasonLower.includes("too far away")) {
+    return "Move closer to the fish";
+  }
+  if (reasonLower.includes("too close")) {
+    return "Move back from the fish";
+  }
   if (reasonLower.includes("not centered")) {
     return "Center the fish in the frame";
   }

@@ -7,7 +7,12 @@ import numpy as np
 from ultralytics import YOLO
 
 from app.config import settings
-from app.services.quality_service import QualityResult, check_blurriness, is_centered
+from app.services.quality_service import (
+    QualityResult,
+    check_blurriness,
+    check_quality_with_bbox,
+    is_centered,
+)
 
 
 @dataclass(frozen=True)
@@ -18,7 +23,9 @@ class DetectionResult:
     confidence: Optional[float]
     is_blurry: bool
     is_centered: bool
+    is_good_size: bool
     blurriness_score: float
+    size_ratio: float
     ready_for_capture: bool
     reason: Optional[str] = None
 
@@ -28,7 +35,6 @@ def _parse_class_name(class_name: str) -> tuple[str, str, str]:
     Parse class name in format: Species_Part_Freshness
     Example: Roughear_scad_eye_fresh -> (Roughear_scad, eye, fresh)
     """
-    # Split from the right to get freshness first
     parts = class_name.rsplit("_", 1)
     if len(parts) < 2:
         return class_name, "", ""
@@ -36,18 +42,15 @@ def _parse_class_name(class_name: str) -> tuple[str, str, str]:
     freshness = parts[1].lower()  # fresh or spoiled
     remaining = parts[0]
     
-    # Now split remaining to get species and part
-    # Known parts: eye, skin
     remaining_lower = remaining.lower()
     
     if remaining_lower.endswith("_eye"):
-        species = remaining[:-4]  # Remove "_eye"
+        species = remaining[:-4]
         part = "eye"
     elif remaining_lower.endswith("_skin"):
-        species = remaining[:-5]  # Remove "_skin"
+        species = remaining[:-5]
         part = "skin"
     else:
-        # Try to split by underscore
         sub_parts = remaining.split("_", maxsplit=1)
         species = sub_parts[0] if sub_parts else remaining
         part = sub_parts[1] if len(sub_parts) > 1 else ""
@@ -81,7 +84,9 @@ def detect_fish(
 ) -> DetectionResult:
     """Run detection and quality checks, returning a response-ready result."""
 
+    # Basic blurriness check first
     quality = check_blurriness(image_rgb)
+    
     detection = _best_detection(model, image_rgb)
     if detection is None:
         return DetectionResult(
@@ -91,7 +96,9 @@ def detect_fish(
             confidence=None,
             is_blurry=quality.is_blurry,
             is_centered=False,
+            is_good_size=False,
             blurriness_score=quality.blurriness_score,
+            size_ratio=0.0,
             ready_for_capture=False,
             reason="No fish detected",
         )
@@ -99,6 +106,9 @@ def detect_fish(
     class_name, conf, bbox_xyxy = detection
     species, part, freshness = _parse_class_name(class_name)
     centered = is_centered(image_rgb.shape[:2], bbox_xyxy)
+    
+    # Enhanced quality check with bbox for size validation
+    quality_with_bbox = check_quality_with_bbox(image_rgb, bbox_xyxy)
 
     target_ok = True
     if target_species:
@@ -108,15 +118,23 @@ def detect_fish(
     if expected_part:
         part_ok = part.lower() == expected_part.lower()
 
+    # Strict auto-capture conditions:
+    # 1. Species must match (if provided)
+    # 2. Part must match (eye/skin)
+    # 3. Confidence must be high (>= 0.8)
+    # 4. Image must not be blurry
+    # 5. Fish must be centered
+    # 6. Fish must be at good distance (15-60% of frame)
     ready = (
         target_ok
         and part_ok
         and conf >= 0.8
         and (not quality.is_blurry)
         and centered
+        and quality_with_bbox.is_good_size
     )
 
-    # Determine reason if not ready
+    # Detailed reason if not ready
     reason = None
     if not ready:
         reasons = []
@@ -125,11 +143,16 @@ def detect_fish(
         if not part_ok:
             reasons.append("Part mismatch")
         if conf < 0.8:
-            reasons.append("Low confidence")
+            reasons.append(f"Low confidence ({conf:.0%})")
         if quality.is_blurry:
             reasons.append("Image is blurry")
         if not centered:
             reasons.append("Not centered")
+        if not quality_with_bbox.is_good_size:
+            if quality_with_bbox.size_ratio < 0.15:
+                reasons.append("Too far away")
+            else:
+                reasons.append("Too close")
         reason = "; ".join(reasons) if reasons else "Not ready"
 
     return DetectionResult(
@@ -139,7 +162,9 @@ def detect_fish(
         confidence=conf,
         is_blurry=quality.is_blurry,
         is_centered=centered,
+        is_good_size=quality_with_bbox.is_good_size,
         blurriness_score=quality.blurriness_score,
+        size_ratio=quality_with_bbox.size_ratio,
         ready_for_capture=ready,
         reason=reason,
     )

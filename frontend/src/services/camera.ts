@@ -11,8 +11,7 @@ export const captureLowRes = async (
   try {
     const photo = await cameraRef.current.takePictureAsync({
       quality: 0.3,
-      base64: false,
-      skipProcessing: true,
+      exif: false,
     });
     return photo?.uri || null;
   } catch (error) {
@@ -32,8 +31,7 @@ export const captureHighRes = async (
   try {
     const photo = await cameraRef.current.takePictureAsync({
       quality: 0.9,
-      base64: false,
-      skipProcessing: false,
+      exif: false,
     });
     return photo?.uri || null;
   } catch (error) {

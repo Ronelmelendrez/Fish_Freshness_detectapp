@@ -5,7 +5,9 @@ export interface DetectionResponse {
   confidence: number | null;
   is_blurry: boolean;
   is_centered: boolean;
+  is_good_size: boolean;
   blurriness_score: number;
+  size_ratio: number;
   ready_for_capture: boolean;
   reason?: string | null;
 }
