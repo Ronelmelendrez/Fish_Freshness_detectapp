@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Feather } from "@expo/vector-icons";
@@ -7,92 +7,35 @@ export default function HomeScreen() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
+    <View className="flex-1 bg-slate-50">
+      <StatusBar style="dark" />
+      <View className="flex-1 justify-center items-center px-8">
+        <View className="w-32 h-32 rounded-full bg-teal-100 justify-center items-center mb-6">
           <Feather name="eye" size={64} color="#0d9488" />
         </View>
-        <Text style={styles.title}>Fishdectapp</Text>
-        <Text style={styles.subtitle}>AI-Powered Fish Freshness Detection</Text>
-        <Text style={styles.description}>
+        <Text className="text-4xl font-bold text-slate-900 mb-2">
+          Fishdectapp
+        </Text>
+        <Text className="text-base font-semibold text-teal-600 mb-4">
+          AI-Powered Fish Freshness Detection
+        </Text>
+        <Text className="text-sm text-slate-500 text-center leading-5 mb-8">
           Scan your fish's eye and skin to get instant freshness results powered
           by AI.
         </Text>
         <TouchableOpacity
-          style={styles.button}
+          className="flex-row bg-teal-600 px-8 py-4 rounded-xl items-center gap-2"
           onPress={() => router.push("/species-selection")}
         >
-          <Text style={styles.buttonText}>Start Scan</Text>
+          <Text className="text-white text-lg font-semibold">Start Scan</Text>
           <Feather name="arrow-right" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Place your fish in good lighting</Text>
+      <View className="p-6 items-center">
+        <Text className="text-xs text-slate-400">
+          Place your fish in good lighting
+        </Text>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#ccfbf1",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#0f172a",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#0d9488",
-    fontWeight: "600",
-    marginBottom: 16,
-  },
-  description: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 32,
-  },
-  button: {
-    flexDirection: "row",
-    backgroundColor: "#0d9488",
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    gap: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  footer: {
-    padding: 24,
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-});

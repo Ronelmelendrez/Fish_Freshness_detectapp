@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState, useEffect, useCallback } from "react";
@@ -22,9 +22,8 @@ export default function EyeScanScreen() {
   const [timer, setTimer] = useState(0);
   const [showManualButton, setShowManualButton] = useState(false);
 
-  const MAX_AUTO_CAPTURE_TIME = 12; // seconds
+  const MAX_AUTO_CAPTURE_TIME = 12;
 
-  // Auto-capture loop
   useEffect(() => {
     if (!permission?.granted || isProcessing || readyForCapture) return;
 
@@ -37,11 +36,9 @@ export default function EyeScanScreen() {
         return newTime;
       });
 
-      // Capture low-res frame
       const uri = await captureLowRes(cameraRef);
       if (!uri) return;
 
-      // Send to backend
       try {
         const response = await detectSpecies(
           uri,
@@ -60,7 +57,6 @@ export default function EyeScanScreen() {
     return () => clearInterval(interval);
   }, [permission?.granted, isProcessing, readyForCapture, currentSpecies]);
 
-  // Handle auto-capture when ready
   useEffect(() => {
     if (readyForCapture && !isProcessing) {
       handleCapture();
@@ -72,7 +68,6 @@ export default function EyeScanScreen() {
     setIsProcessing(true);
 
     try {
-      // Capture high-res image
       const uri = await captureHighRes(cameraRef);
       if (!uri) {
         Alert.alert("Error", "Failed to capture image");
@@ -80,17 +75,14 @@ export default function EyeScanScreen() {
         return;
       }
 
-      // Send to backend for final detection
       const response = await detectSpecies(uri, currentSpecies || undefined, "eye");
 
-      // Save result
       setEyeResult({
         uri,
         freshness: response.freshness || "unknown",
         confidence: response.confidence || 0,
       });
 
-      // Navigate to skin scan
       router.push("/skin-scan");
     } catch (error) {
       Alert.alert("Error", "Detection failed. Please try again.");
@@ -104,74 +96,87 @@ export default function EyeScanScreen() {
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionContainer}>
+      <View className="flex-1 justify-center items-center p-8 bg-slate-50">
         <Feather name="camera" size={64} color="#94a3b8" />
-        <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-        <Text style={styles.permissionText}>
+        <Text className="text-xl font-bold text-slate-900 mt-4 mb-2">
+          Camera Permission Required
+        </Text>
+        <Text className="text-sm text-slate-500 text-center mb-6">
           We need access to your camera to scan fish freshness
         </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Grant Permission</Text>
+        <TouchableOpacity
+          className="bg-teal-600 px-6 py-3 rounded-xl"
+          onPress={requestPermission}
+        >
+          <Text className="text-white text-base font-semibold">
+            Grant Permission
+          </Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back">
-        {/* Overlay */}
-        <View style={styles.overlay}>
+    <View className="flex-1">
+      <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
+        <View className="flex-1 bg-black/30">
           {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <View className="flex-row justify-between items-center p-6 pt-16">
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="w-10 h-10 rounded-full bg-black/50 justify-center items-center"
+            >
               <Feather name="arrow-left" size={24} color="#fff" />
             </TouchableOpacity>
-            <View style={styles.stepIndicator}>
-              <View style={[styles.step, styles.activeStep]}>
-                <Text style={styles.stepText}>1</Text>
+            <View className="flex-row items-center">
+              <View className="w-8 h-8 rounded-full bg-teal-600 justify-center items-center">
+                <Text className="text-white font-semibold">1</Text>
               </View>
-              <View style={styles.stepDivider} />
-              <View style={styles.step}>
-                <Text style={styles.stepText}>2</Text>
+              <View className="w-10 h-0.5 bg-white/30 mx-2" />
+              <View className="w-8 h-8 rounded-full bg-white/30 justify-center items-center">
+                <Text className="text-white font-semibold">2</Text>
               </View>
             </View>
           </View>
 
           {/* Center Frame */}
-          <View style={styles.centerFrame}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
+          <View className="flex-1 justify-center items-center">
+            <View className="absolute top-1/4 left-5 w-10 h-10 border-t-3 border-l-3 border-teal-500" />
+            <View className="absolute top-1/4 right-5 w-10 h-10 border-t-3 border-r-3 border-teal-500" />
+            <View className="absolute bottom-1/4 left-5 w-10 h-10 border-b-3 border-l-3 border-teal-500" />
+            <View className="absolute bottom-1/4 right-5 w-10 h-10 border-b-3 border-r-3 border-teal-500" />
           </View>
 
           {/* Guidance */}
-          <View style={styles.guidanceContainer}>
-            <Text style={styles.guidanceText}>{guidance}</Text>
+          <View className="items-center py-4">
+            <Text className="text-white text-base font-semibold bg-black/50 px-4 py-2 rounded-lg text-center">
+              {guidance}
+            </Text>
             {confidence > 0 && (
-              <Text style={styles.confidenceText}>
+              <Text className="text-teal-500 text-sm mt-2 bg-black/50 px-3 py-1 rounded">
                 Confidence: {Math.round(confidence * 100)}%
               </Text>
             )}
           </View>
 
           {/* Bottom Controls */}
-          <View style={styles.bottomControls}>
+          <View className="flex-row justify-center items-center p-6 gap-4">
             {showManualButton && (
               <TouchableOpacity
-                style={styles.manualButton}
+                className="flex-row bg-teal-600 px-6 py-3 rounded-xl items-center gap-2"
                 onPress={handleCapture}
                 disabled={isProcessing}
               >
                 <Feather name="camera" size={24} color="#fff" />
-                <Text style={styles.manualButtonText}>Capture</Text>
+                <Text className="text-white text-base font-semibold">
+                  Capture
+                </Text>
               </TouchableOpacity>
             )}
 
-            <View style={styles.timerContainer}>
+            <View className="flex-row items-center gap-1 bg-black/50 px-3 py-1.5 rounded-lg">
               <Feather name="clock" size={16} color="#fff" />
-              <Text style={styles.timerText}>{timer}s</Text>
+              <Text className="text-white text-sm">{timer}s</Text>
             </View>
           </View>
         </View>
@@ -179,205 +184,14 @@ export default function EyeScanScreen() {
 
       {/* Processing Overlay */}
       {isProcessing && (
-        <View style={styles.processingOverlay}>
-          <View style={styles.processingContainer}>
-            <Text style={styles.processingText}>Processing...</Text>
+        <View className="absolute inset-0 bg-black/70 justify-center items-center">
+          <View className="bg-white p-8 rounded-2xl items-center">
+            <Text className="text-lg font-semibold text-slate-900">
+              Processing...
+            </Text>
           </View>
         </View>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 24,
-    paddingTop: 60,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  stepIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  step: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  activeStep: {
-    backgroundColor: "#0d9488",
-  },
-  stepText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  stepDivider: {
-    width: 40,
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    marginHorizontal: 8,
-  },
-  centerFrame: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  corner: {
-    position: "absolute",
-    width: 40,
-    height: 40,
-    borderColor: "#0d9488",
-  },
-  topLeft: {
-    top: "30%",
-    left: "20%",
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-  },
-  topRight: {
-    top: "30%",
-    right: "20%",
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-  },
-  bottomLeft: {
-    bottom: "30%",
-    left: "20%",
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-  },
-  bottomRight: {
-    bottom: "30%",
-    right: "20%",
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-  },
-  guidanceContainer: {
-    alignItems: "center",
-    paddingVertical: 16,
-  },
-  guidanceText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  confidenceText: {
-    color: "#0d9488",
-    fontSize: 14,
-    marginTop: 8,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  bottomControls: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    gap: 16,
-  },
-  manualButton: {
-    flexDirection: "row",
-    backgroundColor: "#0d9488",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    gap: 8,
-  },
-  manualButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  timerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  timerText: {
-    color: "#fff",
-    fontSize: 14,
-  },
-  permissionContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-    backgroundColor: "#f8fafc",
-  },
-  permissionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#0f172a",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  permissionText: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  permissionButton: {
-    backgroundColor: "#0d9488",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  permissionButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  processingContainer: {
-    backgroundColor: "#fff",
-    padding: 32,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  processingText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-});
