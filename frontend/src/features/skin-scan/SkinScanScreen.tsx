@@ -21,7 +21,7 @@ export default function SkinScanScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const scanLineAnim = useRef(new Animated.Value(-80)).current;
 
   useEffect(() => {
     if (scanState !== "scanning") return;
@@ -51,12 +51,12 @@ export default function SkinScanScreen() {
     const scanLine = Animated.loop(
       Animated.sequence([
         Animated.timing(scanLineAnim, {
-          toValue: 1,
+          toValue: 80,
           duration: 2000,
           useNativeDriver: true,
         }),
         Animated.timing(scanLineAnim, {
-          toValue: 0,
+          toValue: -80,
           duration: 2000,
           useNativeDriver: true,
         }),
@@ -196,12 +196,11 @@ export default function SkinScanScreen() {
               opacity: scanState === "ready" ? 0.5 : 1,
             }}
           >
-            {/* Skin patch shape - organic irregular shape */}
             <View className="relative w-56 h-56 items-center justify-center">
-              {/* Outer skin texture border - organic shape */}
+              {/* Outer skin texture border */}
               <View className="absolute inset-0 border-4 border-teal-500 rounded-[40px] bg-teal-500/5" />
               
-              {/* Inner texture lines - representing skin texture */}
+              {/* Inner texture lines */}
               <View className="absolute top-8 left-8 right-8 h-px bg-teal-500/30" />
               <View className="absolute top-16 left-6 right-6 h-px bg-teal-500/20" />
               <View className="absolute top-24 left-10 right-10 h-px bg-teal-500/30" />
@@ -219,15 +218,12 @@ export default function SkinScanScreen() {
                 <Feather name="layers" size={32} color={scanState === "detected" ? "#34d399" : "#14b8a6"} />
               </View>
               
-              {/* Scan line */}
+              {/* Scan line using transform */}
               {scanState === "scanning" && (
                 <Animated.View 
-                  className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent"
+                  className="absolute left-4 right-4 h-0.5 bg-teal-400"
                   style={{
-                    top: scanLineAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ["15%", "85%"],
-                    }),
+                    transform: [{ translateY: scanLineAnim }],
                   }}
                 />
               )}
@@ -241,7 +237,6 @@ export default function SkinScanScreen() {
             </View>
           </Animated.View>
           
-          {/* Label */}
           <Text className="text-white/60 text-sm mt-4 font-medium">SKIN SCAN</Text>
         </View>
 

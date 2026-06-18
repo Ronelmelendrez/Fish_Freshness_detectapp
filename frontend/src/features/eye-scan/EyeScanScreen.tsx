@@ -21,7 +21,7 @@ export default function EyeScanScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const scanLineAnim = useRef(new Animated.Value(-60)).current;
 
   // Pulse animation for scanning
   useEffect(() => {
@@ -46,19 +46,19 @@ export default function EyeScanScreen() {
     return () => pulse.stop();
   }, [scanState]);
 
-  // Scan line animation
+  // Scan line animation using transform
   useEffect(() => {
     if (scanState !== "scanning") return;
 
     const scanLine = Animated.loop(
       Animated.sequence([
         Animated.timing(scanLineAnim, {
-          toValue: 1,
+          toValue: 60,
           duration: 1500,
           useNativeDriver: true,
         }),
         Animated.timing(scanLineAnim, {
-          toValue: 0,
+          toValue: -60,
           duration: 1500,
           useNativeDriver: true,
         }),
@@ -191,7 +191,6 @@ export default function EyeScanScreen() {
 
         {/* Eye-shaped Scan Frame */}
         <View className="flex-1 justify-center items-center">
-          {/* Outer eye shape - almond/eye shaped */}
           <Animated.View 
             className="items-center justify-center"
             style={{
@@ -199,7 +198,6 @@ export default function EyeScanScreen() {
               opacity: scanState === "ready" ? 0.5 : 1,
             }}
           >
-            {/* Eye shape using border radius */}
             <View className="relative w-64 h-40 items-center justify-center">
               {/* Left eye curve */}
               <View className="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-32 border-4 border-teal-500 rounded-l-full border-r-0" />
@@ -212,19 +210,15 @@ export default function EyeScanScreen() {
               
               {/* Inner circle (iris) */}
               <View className={`w-24 h-24 rounded-full border-4 ${scanState === "detected" ? "border-emerald-400 bg-emerald-400/20" : "border-teal-400/50"}`}>
-                {/* Pupil */}
                 <View className={`w-10 h-10 rounded-full mx-auto mt-7 ${scanState === "detected" ? "bg-emerald-400" : "bg-teal-400/30"}`} />
               </View>
               
-              {/* Scan line */}
+              {/* Scan line using transform */}
               {scanState === "scanning" && (
                 <Animated.View 
-                  className="absolute left-16 right-16 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent"
+                  className="absolute left-16 right-16 h-0.5 bg-teal-400"
                   style={{
-                    top: scanLineAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ["10%", "85%"],
-                    }),
+                    transform: [{ translateY: scanLineAnim }],
                   }}
                 />
               )}
@@ -238,7 +232,6 @@ export default function EyeScanScreen() {
             </View>
           </Animated.View>
           
-          {/* Label */}
           <Text className="text-white/60 text-sm mt-4 font-medium">EYE SCAN</Text>
         </View>
 
