@@ -10,6 +10,7 @@ export interface DetectionResponse {
   size_ratio: number;
   ready_for_capture: boolean;
   reason?: string | null;
+  mask_polygon?: number[][] | null;
 }
 
 export interface EyeResult {

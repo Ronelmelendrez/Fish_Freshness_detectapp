@@ -2,9 +2,26 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Feather } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
+import { testConnection } from "../../services/api";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+
+  useEffect(() => {
+    const checkBackend = async () => {
+      console.log("🔗 [APP STARTUP] Testing backend connection...");
+      const connected = await testConnection();
+      setBackendStatus(connected ? "connected" : "disconnected");
+      console.log(
+        connected
+          ? "✅ [APP STARTUP] Backend is online"
+          : "❌ [APP STARTUP] Backend is offline — detection will fail"
+      );
+    };
+    checkBackend();
+  }, []);
 
   return (
     <View className="flex-1 bg-slate-50">
@@ -23,6 +40,15 @@ export default function HomeScreen() {
           Scan your fish's eye and skin to get instant freshness results powered
           by AI.
         </Text>
+        {backendStatus === "checking" && (
+          <Text className="text-xs text-slate-400 mb-2">Connecting to server...</Text>
+        )}
+        {backendStatus === "connected" && (
+          <Text className="text-xs text-emerald-500 mb-2">✅ Backend connected</Text>
+        )}
+        {backendStatus === "disconnected" && (
+          <Text className="text-xs text-red-500 mb-2">❌ Backend offline — start the server</Text>
+        )}
         <TouchableOpacity
           className="flex-row bg-teal-600 px-8 py-4 rounded-xl items-center gap-2"
           onPress={() => router.push("/species-selection")}

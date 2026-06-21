@@ -28,6 +28,7 @@ class DetectionResult:
     size_ratio: float
     ready_for_capture: bool
     reason: Optional[str] = None
+    mask_polygon: Optional[list[list[float]]] = None
 
 
 def _parse_class_name(class_name: str) -> tuple[str, str, str]:
@@ -58,7 +59,9 @@ def _parse_class_name(class_name: str) -> tuple[str, str, str]:
     return species, part, freshness
 
 
-def _best_detection(model: YOLO, image_rgb: np.ndarray) -> Optional[tuple[str, float, tuple[float, float, float, float]]]:
+def _best_detection(
+    model: YOLO, image_rgb: np.ndarray
+) -> Optional[tuple[str, float, tuple[float, float, float, float], list[list[float]]]]:
     results = model.predict(source=image_rgb, conf=settings.confidence_threshold, verbose=False)
     if not results:
         return None
@@ -73,7 +76,20 @@ def _best_detection(model: YOLO, image_rgb: np.ndarray) -> Optional[tuple[str, f
     class_name = results[0].names.get(cls_id, str(cls_id))
     bbox = boxes.xyxy[best_idx].cpu().numpy().tolist()
     bbox_xyxy = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
-    return class_name, conf, bbox_xyxy
+
+    # Extract segmentation mask polygon (normalized to 0-1)
+    mask_polygon: list[list[float]] = []
+    masks = results[0].masks
+    if masks is not None and masks.xy is not None and best_idx < len(masks.xy):
+        img_h, img_w = image_rgb.shape[:2]
+        raw_poly = masks.xy[best_idx]
+        if raw_poly is not None and len(raw_poly) > 0:
+            mask_polygon = [
+                [float(pt[0]) / img_w, float(pt[1]) / img_h]
+                for pt in raw_poly
+            ]
+
+    return class_name, conf, bbox_xyxy, mask_polygon
 
 
 def detect_fish(
@@ -103,7 +119,7 @@ def detect_fish(
             reason="No fish detected",
         )
 
-    class_name, conf, bbox_xyxy = detection
+    class_name, conf, bbox_xyxy, mask_polygon = detection
     species, part, freshness = _parse_class_name(class_name)
     centered = is_centered(image_rgb.shape[:2], bbox_xyxy)
     
@@ -167,4 +183,5 @@ def detect_fish(
         size_ratio=quality_with_bbox.size_ratio,
         ready_for_capture=ready,
         reason=reason,
+        mask_polygon=mask_polygon if mask_polygon else None,
     )

@@ -7,6 +7,9 @@ import { useScanStore } from "../../store/scanStore";
 import { detectSpecies } from "../../services/api";
 import { captureLowRes } from "../../services/camera";
 import { getGuidanceMessage } from "../../utils/scoring";
+import { SegmentationOverlay } from "../../utils/segmentation";
+import { ScanQualityPanel } from "../../components/ScanQualityPanel";
+import { DetectionResponse } from "../../types";
 
 export default function SkinScanScreen() {
   const router = useRouter();
@@ -19,7 +22,10 @@ export default function SkinScanScreen() {
   const [guidance, setGuidance] = useState("Get ready to scan...");
   const [confidence, setConfidence] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
-  
+  const [maskPolygon, setMaskPolygon] = useState<number[][] | null>(null);
+  const [layoutSize, setLayoutSize] = useState({ width: 0, height: 0 });
+  const [detectionResponse, setDetectionResponse] = useState<DetectionResponse | null>(null);
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scanLineAnim = useRef(new Animated.Value(-80)).current;
 
@@ -95,8 +101,10 @@ export default function SkinScanScreen() {
         "skin"
       );
 
-      setGuidance(getGuidanceMessage(response.reason));
+      setGuidance(getGuidanceMessage(response.reason ?? null));
       setConfidence(response.confidence || 0);
+      setMaskPolygon(response.mask_polygon ?? null);
+      setDetectionResponse(response);
 
       if (response.ready_for_capture) {
         setScanState("detected");
@@ -163,14 +171,33 @@ export default function SkinScanScreen() {
 
   return (
     <View className="flex-1 bg-black">
-      <CameraView
-        ref={cameraRef}
+      <View
         style={{ flex: 1 }}
-        facing="back"
-        onCameraReady={() => setCameraReady(true)}
-      />
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setLayoutSize({ width, height });
+        }}
+      >
+        <CameraView
+          ref={cameraRef}
+          style={{ flex: 1 }}
+          facing="back"
+          onCameraReady={() => setCameraReady(true)}
+        />
 
-      <View className="absolute inset-0 bg-black/20">
+        {/* Segmentation mask overlay */}
+        {maskPolygon && maskPolygon.length >= 3 && layoutSize.width > 0 && (
+          <SegmentationOverlay
+            polygon={maskPolygon}
+            width={layoutSize.width}
+            height={layoutSize.height}
+            strokeColor="#22c55e"
+            fillOpacity={0.15}
+          />
+        )}
+      </View>
+
+      <View className="absolute inset-0 bg-black/20 pointer-events-none">
         {/* Header */}
         <View className="flex-row justify-between items-center p-6 pt-16">
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center">
@@ -260,6 +287,12 @@ export default function SkinScanScreen() {
                   Confidence: {Math.round(confidence * 100)}%
                 </Text>
               )}
+              {/* Backend quality indicators */}
+              <ScanQualityPanel
+                response={detectionResponse}
+                expectedPart="skin"
+                targetSpecies={currentSpecies}
+              />
             </>
           )}
           

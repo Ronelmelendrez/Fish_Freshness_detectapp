@@ -5,6 +5,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+logger = logging.getLogger(__name__)
+
 from app.api.detection import router as detection_router
 
 logging.basicConfig(
@@ -26,7 +28,8 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    logger.info("Health check requested")
+    return {"status": "healthy", "version": "1.0.0", "model": "YOLOv11-seg"}
 
 
 app.include_router(detection_router)

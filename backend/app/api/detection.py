@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from ultralytics import YOLO
 
@@ -28,6 +28,7 @@ class DetectionResponse(BaseModel):
     size_ratio: float
     ready_for_capture: bool
     reason: Optional[str] = Field(default=None)
+    mask_polygon: Optional[list[list[float]]] = Field(default=None)
 
 
 @router.post("/api/v1/detect", response_model=DetectionResponse)
@@ -38,6 +39,10 @@ async def detect(
     model: YOLO = Depends(get_model),
 ) -> DetectionResponse:
     """Detect fish species, part, and freshness from an uploaded image."""
+    logger.info(
+        "[CONNECTION AUDIT] Detection request from client — species=%s part=%s filename=%s",
+        target_species, expected_part, image.filename,
+    )
 
     try:
         content = await image.read()
