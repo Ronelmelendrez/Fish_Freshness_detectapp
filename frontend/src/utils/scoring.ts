@@ -73,3 +73,12 @@ export const getGuidanceMessage = (reason: string | null): string => {
 
   return "Position the fish in the center";
 };
+
+export const getSpeciesDisplayName = (species: string): string => {
+  const map: Record<string, string> = {
+    "Roughear_scad": "Roughear Scad",
+    "Bigeye_scad": "Bigeye Scad",
+    "striped_red_mullet": "Striped Red Mullet",
+  };
+  return map[species] || species;
+};

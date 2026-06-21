@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useScanStore } from "../../store/scanStore";
-import { calculateFreshnessScore } from "../../utils/scoring";
+import { calculateFreshnessScore, getSpeciesDisplayName } from "../../utils/scoring";
 import { FISH_SPECIES } from "../../types";
 
 export default function ResultScreen() {
@@ -90,7 +90,7 @@ export default function ResultScreen() {
           <Feather name="layers" size={24} color="#0d9488" />
           <View className="ml-3 flex-1">
             <Text className="text-base font-semibold text-slate-900">
-              {speciesInfo?.name || currentSpecies}
+              {getSpeciesDisplayName(currentSpecies)}
             </Text>
             <Text className="text-xs text-slate-500 mt-0.5">
               {speciesInfo?.description}

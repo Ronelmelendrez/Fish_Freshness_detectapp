@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    model_path: str = "./models/best-seg.pt"
+    model_path: str = "./models/best.pt"
     confidence_threshold: float = 0.8
     blur_threshold: float = 100.0
     center_margin: float = 0.2

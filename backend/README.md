@@ -27,7 +27,7 @@ cp .env.example .env
 
 ### 4. Add Model File
 
-Place your trained `best-seg.pt` model file in the `models/` directory.
+Place your trained `best.pt` model file in the `models/` directory.
 
 ### 5. Run the Server
 
@@ -57,7 +57,7 @@ POST /api/v1/detect
 ```
 
 Query Parameters:
-- `target_species` (optional): Expected fish species (e.g., "Roughear_scad")
+- `target_species` (optional): Expected fish species (e.g., "Roughear_scad", "striped_red_mullet")
 - `expected_part` (optional): Expected part to scan ("eye" or "skin")
 
 Request Body:
@@ -100,14 +100,14 @@ The model should be trained with these 12 classes:
 2. Roughear_scad_eye_spoiled
 3. Bigeye_scad_eye_fresh
 4. Bigeye_scad_eye_spoiled
-5. Red_mullet_eye_fresh
-6. Red_mullet_eye_spoiled
+5. striped_red_mullet_eye_fresh
+6. striped_red_mullet_eye_spoiled
 7. Roughear_scad_skin_fresh
 8. Roughear_scad_skin_spoiled
 9. Bigeye_scad_skin_fresh
 10. Bigeye_scad_skin_spoiled
-11. Red_mullet_skin_fresh
-12. Red_mullet_skin_spoiled
+11. striped_red_mullet_skin_fresh
+12. striped_red_mullet_skin_spoiled
 
 ## Auto-Capture Conditions
 

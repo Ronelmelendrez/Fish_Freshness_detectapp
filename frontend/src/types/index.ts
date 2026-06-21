@@ -24,7 +24,7 @@ export interface SkinResult {
   confidence: number;
 }
 
-export type FishSpecies = "Roughear_scad" | "Bigeye_scad" | "Red_mullet";
+export type FishSpecies = "Roughear_scad" | "Bigeye_scad" | "striped_red_mullet";
 
 export const FISH_SPECIES: { id: FishSpecies; name: string; description: string }[] = [
   {
@@ -38,8 +38,8 @@ export const FISH_SPECIES: { id: FishSpecies; name: string; description: string 
     description: "Known for its large eyes and silver body",
   },
   {
-    id: "Red_mullet",
-    name: "Red Mullet",
+    id: "striped_red_mullet",
+    name: "Striped Red Mullet",
     description: "Mediterranean fish with red skin and distinct flavor",
   },
 ];
