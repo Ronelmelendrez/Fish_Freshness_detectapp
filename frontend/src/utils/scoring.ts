@@ -74,11 +74,11 @@ export const getGuidanceMessage = (reason: string | null): string => {
   return "Position the fish in the center";
 };
 
-export const getSpeciesDisplayName = (species: string): string => {
+export const getSpeciesDisplayName = (species: string | null): string => {
   const map: Record<string, string> = {
     "Roughear_scad": "Roughear Scad",
     "Bigeye_scad": "Bigeye Scad",
     "striped_red_mullet": "Striped Red Mullet",
   };
-  return map[species] || species;
+  return (species && map[species]) || species || "Unknown Species";
 };
