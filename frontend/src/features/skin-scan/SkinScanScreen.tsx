@@ -95,14 +95,14 @@ export default function SkinScanScreen() {
   }, [cameraReady, permission?.granted]);
 
   // Camera "Done" → capture single frame → detect → navigate
-  const handleDone = async () => {
-    if (scanState !== "scanning" || !cameraRef.current) return;
+  const captureAndSave = async () => {
+    if (!cameraRef.current) return;
 
     setScanState("processing");
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.3,
+        quality: 0.9,
         exif: false,
         skipProcessing: true,
       });
@@ -119,6 +119,8 @@ export default function SkinScanScreen() {
         "skin"
       );
 
+      setDetectionResponse(result);
+
       setSkinResult({
         uri: photo.uri,
         freshness: result.freshness || "unknown",
@@ -131,6 +133,71 @@ export default function SkinScanScreen() {
       setScanState("scanning");
     }
   };
+
+  const handleDone = () => {
+    if (scanState !== "scanning") return;
+    captureAndSave();
+  };
+
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const inFlightRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (scanState !== "scanning") {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    intervalRef.current = setInterval(async () => {
+      if (inFlightRef.current || !cameraRef.current || scanState !== "scanning") return;
+
+      inFlightRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.3,
+          exif: false,
+          skipProcessing: true,
+        });
+
+        if (!photo?.uri) {
+          inFlightRef.current = false;
+          return;
+        }
+
+        const result = await detectSpecies(
+          photo.uri,
+          currentSpecies || undefined,
+          "skin"
+        );
+
+        if (scanState !== "scanning") return;
+
+        setDetectionResponse(result);
+
+        if (result.ready_for_capture) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          await captureAndSave();
+        }
+      } catch (error) {
+        console.error("Auto-detect error:", error);
+      } finally {
+        inFlightRef.current = false;
+      }
+    }, 1000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [scanState, currentSpecies]);
 
   // Gallery "Done" → store result → navigate
   const handleGalleryDone = () => {
