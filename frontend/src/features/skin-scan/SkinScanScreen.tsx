@@ -139,7 +139,7 @@ export default function SkinScanScreen() {
     captureAndSave();
   };
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
   useEffect(() => {
