@@ -1,13 +1,12 @@
-import { View, Text, TouchableOpacity, Alert, Animated } from "react-native";
+import { View, Text, TouchableOpacity, Animated, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useScanStore } from "../../store/scanStore";
 import { detectSpecies } from "../../services/api";
-import { captureLowRes } from "../../services/camera";
-import { getGuidanceMessage } from "../../utils/scoring";
-import { SegmentationOverlay } from "../../utils/segmentation";
+import { useGalleryScan } from "../../hooks/useGalleryScan";
 import { ScanQualityPanel } from "../../components/ScanQualityPanel";
 import { DetectionResponse } from "../../types";
 
@@ -18,16 +17,28 @@ export default function EyeScanScreen() {
   const currentSpecies = useScanStore((state) => state.currentSpecies);
   const setEyeResult = useScanStore((state) => state.setEyeResult);
 
-  const [scanState, setScanState] = useState<"ready" | "scanning" | "detected" | "processing">("ready");
-  const [guidance, setGuidance] = useState("Get ready to scan...");
-  const [confidence, setConfidence] = useState(0);
+  type ScanMode = "ready" | "scanning" | "processing" | "gallery";
+  const [scanState, setScanState] = useState<ScanMode>("ready");
   const [cameraReady, setCameraReady] = useState(false);
-  const [maskPolygon, setMaskPolygon] = useState<number[][] | null>(null);
-  const [layoutSize, setLayoutSize] = useState({ width: 0, height: 0 });
   const [detectionResponse, setDetectionResponse] = useState<DetectionResponse | null>(null);
+  const [layoutSize, setLayoutSize] = useState({ width: 0, height: 0 });
+  const [maskPolygon, setMaskPolygon] = useState<number[][] | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scanLineAnim = useRef(new Animated.Value(-60)).current;
+
+  // Gallery scan hook
+  const {
+    pickImage,
+    galleryImageUri,
+    galleryResponse,
+    isAnalyzing,
+    error: galleryError,
+    clearGallery,
+  } = useGalleryScan({
+    targetSpecies: currentSpecies,
+    expectedPart: "eye",
+  });
 
   // Pulse animation for scanning
   useEffect(() => {
@@ -52,7 +63,7 @@ export default function EyeScanScreen() {
     return () => pulse.stop();
   }, [scanState]);
 
-  // Scan line animation using transform
+  // Scan line animation
   useEffect(() => {
     if (scanState !== "scanning") return;
 
@@ -80,74 +91,72 @@ export default function EyeScanScreen() {
 
     const readyTimer = setTimeout(() => {
       setScanState("scanning");
-      setGuidance("Position the fish eye in the frame");
-      startDetection();
     }, 1500);
 
     return () => clearTimeout(readyTimer);
   }, [cameraReady, permission?.granted]);
 
-  const startDetection = async () => {
-    if (scanState !== "scanning") return;
+  // Camera "Done" → capture single frame → detect → navigate
+  const handleDone = async () => {
+    if (scanState !== "scanning" || !cameraRef.current) return;
 
-    const uri = await captureLowRes(cameraRef);
-    if (!uri) {
-      setTimeout(startDetection, 500);
-      return;
-    }
+    setScanState("processing");
 
     try {
-      const response = await detectSpecies(
-        uri,
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.3,
+        exif: false,
+        skipProcessing: true,
+      });
+
+      if (!photo?.uri) {
+        Alert.alert("Error", "Failed to capture image");
+        setScanState("scanning");
+        return;
+      }
+
+      const result = await detectSpecies(
+        photo.uri,
         currentSpecies || undefined,
         "eye"
       );
 
-      setGuidance(getGuidanceMessage(response.reason ?? null));
-      setConfidence(response.confidence || 0);
-      setMaskPolygon(response.mask_polygon ?? null);
-      setDetectionResponse(response);
+      setEyeResult({
+        uri: photo.uri,
+        freshness: result.freshness || "unknown",
+        confidence: result.confidence || 0,
+      });
 
-      if (response.ready_for_capture) {
-        setScanState("detected");
-        
-        setTimeout(() => {
-          setScanState("processing");
-          processImage();
-        }, 500);
-      } else {
-        setTimeout(startDetection, 800);
-      }
+      router.push("/skin-scan");
     } catch (error) {
       console.error("Detection error:", error);
-      setTimeout(startDetection, 1000);
+      setScanState("scanning");
     }
   };
 
-  const processImage = async () => {
-    try {
-      const uri = await captureLowRes(cameraRef);
-      if (!uri) {
-        Alert.alert("Error", "Failed to capture image");
-        setScanState("scanning");
-        startDetection();
-        return;
-      }
+  // Gallery "Done" → store result → navigate
+  const handleGalleryDone = () => {
+    if (!galleryResponse) return;
 
-      const response = await detectSpecies(uri, currentSpecies || undefined, "eye");
-      
-      setEyeResult({
-        uri,
-        freshness: response.freshness || "unknown",
-        confidence: response.confidence || 0,
-      });
-      
-      router.push("/skin-scan");
-    } catch (error) {
-      Alert.alert("Error", "Detection failed. Please try again.");
-      setScanState("scanning");
-      startDetection();
-    }
+    setEyeResult({
+      uri: galleryImageUri || "",
+      freshness: galleryResponse.freshness || "unknown",
+      confidence: galleryResponse.confidence || 0,
+    });
+
+    router.push("/skin-scan");
+  };
+
+  // "Choose from Gallery" pressed
+  const handleGalleryPress = async () => {
+    setScanState("gallery");
+    await pickImage();
+  };
+
+  // "Retake" from gallery → back to camera
+  const handleRetake = () => {
+    clearGallery();
+    setScanState("scanning");
   };
 
   if (!permission) {
@@ -171,6 +180,118 @@ export default function EyeScanScreen() {
     );
   }
 
+  // ─── Gallery Mode ───────────────────────────────────────────────
+  if (scanState === "gallery") {
+    return (
+      <View className="flex-1 bg-black">
+        {/* Header */}
+        <View className="flex-row justify-between items-center p-6 pt-16">
+          <TouchableOpacity
+            onPress={() => { clearGallery(); setScanState("scanning"); }}
+            className="w-10 h-10 rounded-full bg-black/50 justify-center items-center"
+          >
+            <Feather name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text className="text-white text-lg font-bold">Eye Scan</Text>
+          <View className="w-10" />
+        </View>
+
+        {/* Image Preview */}
+        <View className="flex-1 justify-center items-center px-4">
+          {galleryImageUri && (
+            <View className="w-full rounded-2xl overflow-hidden border-2 border-teal-500/50">
+              <Image
+                source={{ uri: galleryImageUri }}
+                style={{ width: "100%", height: 350 }}
+                contentFit="contain"
+              />
+            </View>
+          )}
+
+          {isAnalyzing && (
+            <View className="flex-row items-center mt-4 bg-black/50 px-4 py-2 rounded-lg">
+              <ActivityIndicator size="small" color="#14b8a6" />
+              <Text className="text-white text-sm ml-2">Analyzing image...</Text>
+            </View>
+          )}
+
+          {galleryError && (
+            <View className="mt-4 bg-red-500/20 px-4 py-2 rounded-lg">
+              <Text className="text-red-400 text-sm text-center">{galleryError}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Quality Panel + Buttons */}
+        <View className="pb-6 px-2">
+          <ScanQualityPanel
+            response={galleryResponse}
+            expectedPart="eye"
+            targetSpecies={currentSpecies}
+          />
+
+          {/* Freshness result banner */}
+          {galleryResponse?.freshness && !isAnalyzing && (
+            <View className={`mx-4 mb-2 px-4 py-3 rounded-xl ${
+              galleryResponse.freshness.toLowerCase() === "fresh"
+                ? "bg-emerald-500/20 border border-emerald-500/30"
+                : "bg-red-500/20 border border-red-500/30"
+            }`}>
+              <View className="flex-row items-center justify-center">
+                <Feather
+                  name={galleryResponse.freshness.toLowerCase() === "fresh" ? "sun" : "cloud-rain"}
+                  size={20}
+                  color={galleryResponse.freshness.toLowerCase() === "fresh" ? "#34d399" : "#f87171"}
+                />
+                <Text className={`text-lg font-bold ml-2 ${
+                  galleryResponse.freshness.toLowerCase() === "fresh"
+                    ? "text-emerald-400"
+                    : "text-red-400"
+                }`}>
+                  {galleryResponse.freshness}
+                </Text>
+                {galleryResponse.confidence != null && (
+                  <Text className="text-white/50 text-sm ml-2">
+                    ({Math.round(galleryResponse.confidence * 100)}% confidence)
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Buttons */}
+          <View className="flex-row justify-center gap-3 px-4 mt-2">
+            <TouchableOpacity
+              onPress={handleRetake}
+              className="flex-1 flex-row items-center justify-center py-3 rounded-xl border border-white/30 bg-white/10"
+            >
+              <Feather name="camera" size={18} color="#fff" />
+              <Text className="text-white text-base font-semibold ml-2">Retake</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleGalleryDone}
+              disabled={!galleryResponse || isAnalyzing}
+              className={`flex-1 flex-row items-center justify-center py-3 rounded-xl ${
+                galleryResponse && !isAnalyzing
+                  ? "bg-emerald-600"
+                  : "bg-white/20"
+              }`}
+            >
+              <Feather name="check" size={18} color={galleryResponse && !isAnalyzing ? "#fff" : "#ffffff40"} />
+              <Text className={`text-base font-bold ml-2 ${
+                galleryResponse && !isAnalyzing ? "text-white" : "text-white/40"
+              }`}>
+                Done
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Camera Mode ────────────────────────────────────────────────
   return (
     <View className="flex-1 bg-black">
       <View
@@ -189,20 +310,27 @@ export default function EyeScanScreen() {
 
         {/* Segmentation mask overlay */}
         {maskPolygon && maskPolygon.length >= 3 && layoutSize.width > 0 && (
-          <SegmentationOverlay
-            polygon={maskPolygon}
-            width={layoutSize.width}
-            height={layoutSize.height}
-            strokeColor="#22c55e"
-            fillOpacity={0.15}
-          />
+          <View style={{ position: "absolute", top: 0, left: 0, width: layoutSize.width, height: layoutSize.height }}>
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                borderWidth: 2,
+                borderColor: "#22c55e",
+                borderRadius: 8,
+              }}
+            />
+          </View>
         )}
       </View>
 
       <View className="absolute inset-0 bg-black/20 pointer-events-none">
         {/* Header */}
         <View className="flex-row justify-between items-center p-6 pt-16">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center">
+          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 justify-center items-center pointer-events-auto">
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <View className="flex-row items-center">
@@ -236,11 +364,11 @@ export default function EyeScanScreen() {
               <View className="absolute bottom-2 left-16 right-16 h-1 bg-teal-500" />
               
               {/* Inner circle (iris) */}
-              <View className={`w-24 h-24 rounded-full border-4 ${scanState === "detected" ? "border-emerald-400 bg-emerald-400/20" : "border-teal-400/50"}`}>
-                <View className={`w-10 h-10 rounded-full mx-auto mt-7 ${scanState === "detected" ? "bg-emerald-400" : "bg-teal-400/30"}`} />
+              <View className="w-24 h-24 rounded-full border-4 border-teal-400/50">
+                <View className="w-10 h-10 rounded-full mx-auto mt-7 bg-teal-400/30" />
               </View>
               
-              {/* Scan line using transform */}
+              {/* Scan line */}
               {scanState === "scanning" && (
                 <Animated.View 
                   className="absolute left-16 right-16 h-0.5 bg-teal-400"
@@ -249,21 +377,14 @@ export default function EyeScanScreen() {
                   }}
                 />
               )}
-              
-              {/* Detected checkmark */}
-              {scanState === "detected" && (
-                <View className="absolute inset-0 items-center justify-center">
-                  <Feather name="check-circle" size={48} color="#34d399" />
-                </View>
-              )}
             </View>
           </Animated.View>
           
           <Text className="text-white/60 text-sm mt-4 font-medium">EYE SCAN</Text>
         </View>
 
-        {/* Status */}
-        <View className="items-center py-4">
+        {/* Status + Buttons */}
+        <View className="items-center py-4 pointer-events-auto">
           {scanState === "ready" && (
             <View className="bg-black/50 px-6 py-3 rounded-lg">
               <Text className="text-white text-lg font-bold text-center">
@@ -274,31 +395,33 @@ export default function EyeScanScreen() {
           
           {scanState === "scanning" && (
             <>
-              <Text className="text-white text-base font-semibold bg-black/50 px-4 py-2 rounded-lg text-center">
-                {guidance}
-              </Text>
-              {confidence > 0 && (
-                <Text className="text-teal-500 text-sm mt-2 bg-black/50 px-3 py-1 rounded">
-                  Confidence: {Math.round(confidence * 100)}%
-                </Text>
-              )}
-              {/* Backend quality indicators */}
               <ScanQualityPanel
                 response={detectionResponse}
                 expectedPart="eye"
                 targetSpecies={currentSpecies}
               />
+
+              {/* Action buttons */}
+              <View className="flex-row justify-center gap-3 px-4 mt-2">
+                <TouchableOpacity
+                  onPress={handleGalleryPress}
+                  className="flex-1 flex-row items-center justify-center py-3 rounded-xl border border-white/30 bg-white/10"
+                >
+                  <Feather name="image" size={18} color="#fff" />
+                  <Text className="text-white text-base font-semibold ml-2">Gallery</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleDone}
+                  className="flex-1 flex-row items-center justify-center py-3 rounded-xl bg-teal-600"
+                >
+                  <Feather name="check" size={18} color="#fff" />
+                  <Text className="text-white text-base font-bold ml-2">Done</Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
-          
-          {scanState === "detected" && (
-            <View className="bg-emerald-500/80 px-6 py-3 rounded-lg">
-              <Text className="text-white text-lg font-bold text-center">
-                ✓ Eye Detected!
-              </Text>
-            </View>
-          )}
-          
+
           {scanState === "processing" && (
             <View className="bg-black/70 px-6 py-3 rounded-lg">
               <Text className="text-white text-lg font-bold text-center">
@@ -313,14 +436,6 @@ export default function EyeScanScreen() {
           <View className={`px-4 py-2 rounded-full ${scanState === "scanning" ? "bg-teal-600" : "bg-white/20"}`}>
             <Text className={`text-sm font-semibold ${scanState === "scanning" ? "text-white" : "text-white/70"}`}>
               Scanning
-            </Text>
-          </View>
-          <View className="w-8 items-center justify-center">
-            <Feather name="chevron-right" size={16} color="#fff" />
-          </View>
-          <View className={`px-4 py-2 rounded-full ${scanState === "processing" ? "bg-teal-600" : "bg-white/20"}`}>
-            <Text className={`text-sm font-semibold ${scanState === "processing" ? "text-white" : "text-white/70"}`}>
-              Processing
             </Text>
           </View>
         </View>

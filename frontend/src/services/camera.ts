@@ -1,21 +1,27 @@
 import { CameraView } from "expo-camera";
 
 /**
- * Capture a low-resolution image for auto-capture detection loop
+ * Capture a single frame and return it as a Blob.
+ * Only called on-demand (e.g., when user taps "Done").
  */
-export const captureLowRes = async (
+export const captureFrameBlob = async (
   cameraRef: React.RefObject<CameraView | null>
-): Promise<string | null> => {
+): Promise<Blob | null> => {
   if (!cameraRef.current) return null;
 
   try {
     const photo = await cameraRef.current.takePictureAsync({
       quality: 0.3,
       exif: false,
+      skipProcessing: true,
     });
-    return photo?.uri || null;
-  } catch (error) {
-    console.error("Failed to capture low-res image:", error);
+
+    if (!photo?.uri) return null;
+
+    const response = await fetch(photo.uri);
+    const blob = await response.blob();
+    return blob;
+  } catch {
     return null;
   }
 };

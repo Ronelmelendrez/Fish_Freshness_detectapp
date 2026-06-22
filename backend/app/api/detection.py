@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from ultralytics import YOLO
 
@@ -76,3 +77,64 @@ async def detect(
     )
 
     return DetectionResponse(**result.__dict__)
+
+
+@router.websocket("/ws/detect")
+async def detect_stream(
+    websocket: WebSocket,
+    target_species: Optional[str] = Query(default=None),
+    expected_part: Optional[str] = Query(default=None),
+):
+    """WebSocket endpoint for real-time fish detection streaming."""
+    await websocket.accept()
+    model = get_model()
+    logger.info(
+        "[WS] Client connected — species=%s part=%s", target_species, expected_part
+    )
+
+    try:
+        while True:
+            image_bytes = await websocket.receive_bytes()
+
+            if not image_bytes:
+                continue
+
+            try:
+                image_rgb = load_image_from_bytes(image_bytes)
+            except Exception as exc:
+                logger.warning("[WS] Failed to decode image: %s", exc)
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "error": "Invalid image",
+                            "detail": str(exc),
+                        }
+                    )
+                )
+                continue
+
+            try:
+                result: DetectionResult = detect_fish(
+                    model,
+                    image_rgb,
+                    target_species,
+                    expected_part,
+                )
+            except Exception as exc:
+                logger.exception("[WS] Detection failed: %s", exc)
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "error": "Detection failed",
+                            "detail": str(exc),
+                        }
+                    )
+                )
+                continue
+
+            await websocket.send_text(json.dumps(result.__dict__))
+
+    except WebSocketDisconnect:
+        logger.info("[WS] Client disconnected")
+    except Exception as exc:
+        logger.exception("[WS] Unexpected error: %s", exc)
