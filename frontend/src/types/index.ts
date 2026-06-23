@@ -14,13 +14,13 @@ export interface DetectionResponse {
 }
 
 export interface EyeResult {
-  uri: string;
+  uri?: string;
   freshness: string;
   confidence: number;
 }
 
 export interface SkinResult {
-  uri: string;
+  uri?: string;
   freshness: string;
   confidence: number;
 }

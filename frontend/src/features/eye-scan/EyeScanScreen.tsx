@@ -9,7 +9,7 @@ import { useGalleryScan } from "../../hooks/useGalleryScan";
 import { useDetectionWebSocket } from "../../services/websocket";
 import { ScanQualityPanel } from "../../components/ScanQualityPanel";
 import { DetectionResponse } from "../../types";
-import { captureFrameBytes, captureHighRes } from "../../services/camera";
+import { captureFrameBytes } from "../../services/camera";
 
 export default function EyeScanScreen() {
   const router = useRouter();
@@ -61,26 +61,15 @@ export default function EyeScanScreen() {
         readyCountRef.current++;
         if (readyCountRef.current < REQUIRED_READY_FRAMES) return;
 
-        // Enough consecutive ready frames — auto-capture
+      // Enough consecutive ready frames — navigate with WS result (no capture needed)
         wsDisconnectRef.current();
         setScanState("processing");
 
-        (async () => {
-          const uri = await captureHighRes(cameraRef);
-          if (!uri) {
-            Alert.alert("Error", "Failed to capture image");
-            setScanState("scanning");
-            readyCountRef.current = 0;
-            wsConnectRef.current();
-            return;
-          }
-          setEyeResult({
-            uri,
-            freshness: data.freshness || "unknown",
-            confidence: data.confidence || 0,
-          });
-          router.push("/skin-scan");
-        })();
+        setEyeResult({
+          freshness: data.freshness || "unknown",
+          confidence: data.confidence || 0,
+        });
+        router.push("/skin-scan");
       } else {
         readyCountRef.current = 0; // reset if not ready
       }
@@ -216,46 +205,19 @@ export default function EyeScanScreen() {
     return () => clearTimeout(readyTimer);
   }, [cameraReady, permission?.granted]);
 
-  // ── Manual capture (Done button) ────────────────────────────────────
-  // Uses the last WS detection result — no HTTP roundtrip needed
-  const captureAndSave = async () => {
-    if (!cameraRef.current) return;
-
-    setScanState("processing");
-    wsDisconnect();
-
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.9,
-        exif: false,
-        skipProcessing: true,
-      });
-
-      if (!photo?.uri) {
-        Alert.alert("Error", "Failed to capture image");
-        setScanState("scanning");
-        return;
-      }
-
-      // Use the last real-time detection result from WebSocket
-      const lastResult = lastDetectionRef.current;
-
-      setEyeResult({
-        uri: photo.uri,
-        freshness: lastResult?.freshness || "unknown",
-        confidence: lastResult?.confidence || 0,
-      });
-
-      router.push("/skin-scan");
-    } catch (error) {
-      console.error("Capture error:", error);
-      setScanState("scanning");
-    }
-  };
-
+  // ── Manual Done button — uses last WS result, no capture needed ─────
   const handleDone = () => {
     if (scanState !== "scanning") return;
-    captureAndSave();
+
+    const lastResult = lastDetectionRef.current;
+    wsDisconnect();
+    setScanState("processing");
+
+    setEyeResult({
+      freshness: lastResult?.freshness || "unknown",
+      confidence: lastResult?.confidence || 0,
+    });
+    router.push("/skin-scan");
   };
 
   // Gallery "Done" → store result → navigate
