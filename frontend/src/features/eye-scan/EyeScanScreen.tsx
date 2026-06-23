@@ -209,13 +209,18 @@ export default function EyeScanScreen() {
   const handleDone = () => {
     if (scanState !== "scanning") return;
 
+    if (!lastDetectionRef.current) {
+      Alert.alert("Analyzing...", "Please wait a moment for detection results.");
+      return;
+    }
+
     const lastResult = lastDetectionRef.current;
     wsDisconnect();
     setScanState("processing");
 
     setEyeResult({
-      freshness: lastResult?.freshness || "unknown",
-      confidence: lastResult?.confidence || 0,
+      freshness: lastResult.freshness || "unknown",
+      confidence: lastResult.confidence || 0,
     });
     router.push("/skin-scan");
   };
