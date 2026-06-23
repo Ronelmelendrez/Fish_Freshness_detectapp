@@ -93,9 +93,27 @@ export default function EyeScanScreen() {
   wsConnectRef.current = wsConnect;
   wsDisconnectRef.current = wsDisconnect;
 
+  // ── WebSocket lifecycle: connect on scanning start, disconnect on leave ──
+  const wsStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (scanState === "scanning" && !wsStartedRef.current) {
+      wsStartedRef.current = true;
+      wsConnect();
+    }
+
+    if (scanState !== "scanning" && wsStartedRef.current) {
+      wsStartedRef.current = false;
+      wsDisconnect();
+    }
+  }, [scanState]);
+
   // ── Frame capture loop (sends frames over WebSocket) ─────────────────
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inFlightRef = useRef(false);
+  // Track isConnected in a ref so the interval callback always reads the latest value
+  const isConnectedRef = useRef(isConnected);
+  isConnectedRef.current = isConnected;
 
   useEffect(() => {
     if (scanState !== "scanning") {
@@ -106,12 +124,9 @@ export default function EyeScanScreen() {
       return;
     }
 
-    // Connect WebSocket when scanning starts
-    wsConnect();
-
     frameIntervalRef.current = setInterval(async () => {
       if (inFlightRef.current || !cameraRef.current || scanState !== "scanning") return;
-      if (!isConnected) return; // wait until WS is open
+      if (!isConnectedRef.current) return; // wait until WS is open
 
       inFlightRef.current = true;
       try {
@@ -131,9 +146,8 @@ export default function EyeScanScreen() {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
       }
-      wsDisconnect();
     };
-  }, [scanState, isConnected]);
+  }, [scanState]);
 
   // ── Animations ──────────────────────────────────────────────────────
   useEffect(() => {
