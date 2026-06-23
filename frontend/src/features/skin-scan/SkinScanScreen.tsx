@@ -1,14 +1,16 @@
 import { View, Text, TouchableOpacity, Animated, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useScanStore } from "../../store/scanStore";
 import { detectSpecies } from "../../services/api";
 import { useGalleryScan } from "../../hooks/useGalleryScan";
+import { useDetectionWebSocket } from "../../services/websocket";
 import { ScanQualityPanel } from "../../components/ScanQualityPanel";
 import { DetectionResponse } from "../../types";
+import { captureFrameBytes, captureHighRes } from "../../services/camera";
 
 export default function SkinScanScreen() {
   const router = useRouter();
@@ -40,6 +42,100 @@ export default function SkinScanScreen() {
     expectedPart: "skin",
   });
 
+  // ── WebSocket real-time detection ────────────────────────────────────
+  // Use refs for connect/disconnect so handleWsResult doesn't depend on them
+  const wsConnectRef = useRef<() => void>(() => {});
+  const wsDisconnectRef = useRef<() => void>(() => {});
+
+  const handleWsResult = useCallback(
+    (data: DetectionResponse) => {
+      setDetectionResponse(data);
+
+      // When backend says ready, grab a high-res photo and proceed
+      if (data.ready_for_capture && scanState === "scanning") {
+        wsDisconnectRef.current(); // stop streaming
+        setScanState("processing");
+
+        (async () => {
+          const uri = await captureHighRes(cameraRef);
+          if (!uri) {
+            Alert.alert("Error", "Failed to capture image");
+            setScanState("scanning");
+            wsConnectRef.current();
+            return;
+          }
+          setSkinResult({
+            uri,
+            freshness: data.freshness || "unknown",
+            confidence: data.confidence || 0,
+          });
+          router.push("/result");
+        })();
+      }
+    },
+    [scanState, currentSpecies],
+  );
+
+  const {
+    connect: wsConnect,
+    disconnect: wsDisconnect,
+    sendFrame,
+    connectionState,
+    isConnected,
+  } = useDetectionWebSocket({
+    targetSpecies: currentSpecies,
+    expectedPart: "skin",
+    onResult: handleWsResult,
+    autoConnect: false, // we'll connect manually when scanning starts
+  });
+
+  // Keep refs up to date so handleWsResult always has latest functions
+  wsConnectRef.current = wsConnect;
+  wsDisconnectRef.current = wsDisconnect;
+
+  // ── Frame capture loop (sends frames over WebSocket) ─────────────────
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (scanState !== "scanning") {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Connect WebSocket when scanning starts
+    wsConnect();
+
+    frameIntervalRef.current = setInterval(async () => {
+      if (inFlightRef.current || !cameraRef.current || scanState !== "scanning") return;
+      if (!isConnected) return; // wait until WS is open
+
+      inFlightRef.current = true;
+      try {
+        const bytes = await captureFrameBytes(cameraRef);
+        if (bytes && scanState === "scanning") {
+          sendFrame(bytes);
+        }
+      } catch {
+        // Ignore intermittent capture errors
+      } finally {
+        inFlightRef.current = false;
+      }
+    }, 250); // ~4 fps – balanced between responsiveness and load
+
+    return () => {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      wsDisconnect();
+    };
+  }, [scanState, isConnected]);
+
+  // ── Animations ──────────────────────────────────────────────────────
   useEffect(() => {
     if (scanState !== "scanning") return;
 
@@ -94,11 +190,12 @@ export default function SkinScanScreen() {
     return () => clearTimeout(readyTimer);
   }, [cameraReady, permission?.granted]);
 
-  // Camera "Done" → capture single frame → detect → navigate
+  // ── Manual capture (Done button) ────────────────────────────────────
   const captureAndSave = async () => {
     if (!cameraRef.current) return;
 
     setScanState("processing");
+    wsDisconnect();
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -138,66 +235,6 @@ export default function SkinScanScreen() {
     if (scanState !== "scanning") return;
     captureAndSave();
   };
-
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const inFlightRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    if (scanState !== "scanning") {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-
-    intervalRef.current = setInterval(async () => {
-      if (inFlightRef.current || !cameraRef.current || scanState !== "scanning") return;
-
-      inFlightRef.current = true;
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.3,
-          exif: false,
-          skipProcessing: true,
-        });
-
-        if (!photo?.uri) {
-          inFlightRef.current = false;
-          return;
-        }
-
-        const result = await detectSpecies(
-          photo.uri,
-          currentSpecies || undefined,
-          "skin"
-        );
-
-        if (scanState !== "scanning") return;
-
-        setDetectionResponse(result);
-
-        if (result.ready_for_capture) {
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          await captureAndSave();
-        }
-      } catch (error) {
-        console.error("Auto-detect error:", error);
-      } finally {
-        inFlightRef.current = false;
-      }
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [scanState, currentSpecies]);
 
   // Gallery "Done" → store result → navigate
   const handleGalleryDone = () => {
@@ -453,6 +490,18 @@ export default function SkinScanScreen() {
           </Animated.View>
           
           <Text className="text-white/60 text-sm mt-4 font-medium">SKIN SCAN</Text>
+
+          {/* WebSocket connection indicator */}
+          {scanState === "scanning" && (
+            <View className="flex-row items-center mt-2">
+              <View className={`w-2 h-2 rounded-full mr-1.5 ${
+                isConnected ? "bg-emerald-400" : connectionState === "connecting" ? "bg-amber-400" : "bg-red-400"
+              }`} />
+              <Text className="text-white/40 text-xs">
+                {isConnected ? "Live detection" : connectionState === "connecting" ? "Connecting..." : "Offline"}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Status + Buttons */}
@@ -476,19 +525,19 @@ export default function SkinScanScreen() {
               {/* Action buttons */}
               <View className="flex-row justify-center gap-3 px-4 mt-2">
                 <TouchableOpacity
+                  onPress={handleDone}
+                  className="flex-1 flex-row items-center justify-center py-3 rounded-xl bg-teal-600"
+                >
+                  <Feather name="check" size={18} color="#fff" />
+                  <Text className="text-white text-base font-semibold ml-2">Done</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   onPress={handleGalleryPress}
                   className="flex-1 flex-row items-center justify-center py-3 rounded-xl border border-white/30 bg-white/10"
                 >
                   <Feather name="image" size={18} color="#fff" />
                   <Text className="text-white text-base font-semibold ml-2">Gallery</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleDone}
-                  className="flex-1 flex-row items-center justify-center py-3 rounded-xl bg-teal-600"
-                >
-                  <Feather name="check" size={18} color="#fff" />
-                  <Text className="text-white text-base font-bold ml-2">Done</Text>
                 </TouchableOpacity>
               </View>
             </>

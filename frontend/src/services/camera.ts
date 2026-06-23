@@ -27,6 +27,32 @@ export const captureFrameBlob = async (
 };
 
 /**
+ * Capture a frame and return it as raw bytes (ArrayBuffer) for WebSocket streaming.
+ * Optimised for speed: low quality, no EXIF, skip processing.
+ */
+export const captureFrameBytes = async (
+  cameraRef: React.RefObject<CameraView | null>
+): Promise<ArrayBuffer | null> => {
+  if (!cameraRef.current) return null;
+
+  try {
+    const photo = await cameraRef.current.takePictureAsync({
+      quality: 0.3,
+      exif: false,
+      skipProcessing: true,
+    });
+
+    if (!photo?.uri) return null;
+
+    const response = await fetch(photo.uri);
+    const buffer = await response.arrayBuffer();
+    return buffer;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Capture a high-resolution image for final capture
  */
 export const captureHighRes = async (
