@@ -5,7 +5,6 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useScanStore } from "../../store/scanStore";
-import { detectSpecies } from "../../services/api";
 import { useGalleryScan } from "../../hooks/useGalleryScan";
 import { useDetectionWebSocket } from "../../services/websocket";
 import { ScanQualityPanel } from "../../components/ScanQualityPanel";
@@ -46,14 +45,24 @@ export default function EyeScanScreen() {
   // Use refs for connect/disconnect so handleWsResult doesn't depend on them
   const wsConnectRef = useRef<() => void>(() => {});
   const wsDisconnectRef = useRef<() => void>(() => {});
+  // Store last detection result for manual Done button (no HTTP fallback needed)
+  const lastDetectionRef = useRef<DetectionResponse | null>(null);
+  // Debounce: require consecutive ready frames before auto-capture
+  const readyCountRef = useRef(0);
+  const REQUIRED_READY_FRAMES = 3;
 
   const handleWsResult = useCallback(
     (data: DetectionResponse) => {
       setDetectionResponse(data);
+      lastDetectionRef.current = data;
 
-      // When backend says ready, grab a high-res photo and proceed
+      // Debounce ready_for_capture: require N consecutive ready frames
       if (data.ready_for_capture && scanState === "scanning") {
-        wsDisconnectRef.current(); // stop streaming
+        readyCountRef.current++;
+        if (readyCountRef.current < REQUIRED_READY_FRAMES) return;
+
+        // Enough consecutive ready frames — auto-capture
+        wsDisconnectRef.current();
         setScanState("processing");
 
         (async () => {
@@ -61,6 +70,7 @@ export default function EyeScanScreen() {
           if (!uri) {
             Alert.alert("Error", "Failed to capture image");
             setScanState("scanning");
+            readyCountRef.current = 0;
             wsConnectRef.current();
             return;
           }
@@ -71,6 +81,8 @@ export default function EyeScanScreen() {
           });
           router.push("/skin-scan");
         })();
+      } else {
+        readyCountRef.current = 0; // reset if not ready
       }
     },
     [scanState, currentSpecies],
@@ -205,6 +217,7 @@ export default function EyeScanScreen() {
   }, [cameraReady, permission?.granted]);
 
   // ── Manual capture (Done button) ────────────────────────────────────
+  // Uses the last WS detection result — no HTTP roundtrip needed
   const captureAndSave = async () => {
     if (!cameraRef.current) return;
 
@@ -224,23 +237,18 @@ export default function EyeScanScreen() {
         return;
       }
 
-      const result = await detectSpecies(
-        photo.uri,
-        currentSpecies || undefined,
-        "eye"
-      );
-
-      setDetectionResponse(result);
+      // Use the last real-time detection result from WebSocket
+      const lastResult = lastDetectionRef.current;
 
       setEyeResult({
         uri: photo.uri,
-        freshness: result.freshness || "unknown",
-        confidence: result.confidence || 0,
+        freshness: lastResult?.freshness || "unknown",
+        confidence: lastResult?.confidence || 0,
       });
 
       router.push("/skin-scan");
     } catch (error) {
-      console.error("Detection error:", error);
+      console.error("Capture error:", error);
       setScanState("scanning");
     }
   };

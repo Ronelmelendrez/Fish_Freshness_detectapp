@@ -200,6 +200,12 @@ export function useDetectionWebSocket({
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+    // Backpressure: skip if send buffer is backed up (>512 KB queued)
+    if (ws.bufferedAmount > 512 * 1024) {
+      console.warn("⚠️ [WS] Backpressure — skipping frame, bufferedAmount:", ws.bufferedAmount);
+      return;
+    }
+
     // Frame skipping
     frameCountRef.current++;
     if (frameCountRef.current % FRAME_SKIP !== 0) return;
