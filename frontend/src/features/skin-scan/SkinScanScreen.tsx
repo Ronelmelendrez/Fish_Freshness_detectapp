@@ -22,6 +22,7 @@ export default function SkinScanScreen() {
   const [scanState, setScanState] = useState<ScanMode>("ready");
   const [cameraReady, setCameraReady] = useState(false);
   const [detectionResponse, setDetectionResponse] = useState<DetectionResponse | null>(null);
+  const [hasDetection, setHasDetection] = useState(false);
   const [layoutSize, setLayoutSize] = useState({ width: 0, height: 0 });
   const [maskPolygon, setMaskPolygon] = useState<number[][] | null>(null);
 
@@ -53,8 +54,9 @@ export default function SkinScanScreen() {
 
   const handleWsResult = useCallback(
     (data: DetectionResponse) => {
-      setDetectionResponse(data);
+    setDetectionResponse(data);
       lastDetectionRef.current = data;
+      if (!hasDetection) setHasDetection(true);
 
       // Debounce ready_for_capture: require N consecutive ready frames
       if (data.ready_for_capture && scanState === "scanning") {
@@ -207,12 +209,7 @@ export default function SkinScanScreen() {
 
   // ── Manual Done button — uses last WS result, no capture needed ─────
   const handleDone = () => {
-    if (scanState !== "scanning") return;
-
-    if (!lastDetectionRef.current) {
-      Alert.alert("Analyzing...", "Please wait a moment for detection results.");
-      return;
-    }
+    if (scanState !== "scanning" || !lastDetectionRef.current) return;
 
     const lastResult = lastDetectionRef.current;
     wsDisconnect();
@@ -515,10 +512,13 @@ export default function SkinScanScreen() {
               <View className="flex-row justify-center gap-3 px-4 mt-2">
                 <TouchableOpacity
                   onPress={handleDone}
-                  className="flex-1 flex-row items-center justify-center py-3 rounded-xl bg-teal-600"
+                  disabled={!hasDetection}
+                  className={`flex-1 flex-row items-center justify-center py-3 rounded-xl ${hasDetection ? "bg-teal-600" : "bg-white/20"}`}
                 >
-                  <Feather name="check" size={18} color="#fff" />
-                  <Text className="text-white text-base font-semibold ml-2">Done</Text>
+                  <Feather name="check" size={18} color={hasDetection ? "#fff" : "#ffffff40"} />
+                  <Text className={`text-base font-semibold ml-2 ${hasDetection ? "text-white" : "text-white/40"}`}>
+                    {hasDetection ? "Done" : "Waiting..."}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
