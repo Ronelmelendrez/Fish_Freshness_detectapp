@@ -10,7 +10,7 @@ from ultralytics import YOLO
 
 from app.models.model_loader import get_model
 from app.services.detection_service import DetectionResult, detect_fish
-from app.utils.image_utils import load_image_from_bytes, load_raw_frame_to_rgb
+from app.utils.image_utils import load_image_from_bytes, load_raw_frame_to_rgb, nv21_to_bgr
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,11 @@ async def detect_stream(
     WebSocket endpoint for real-time fish detection streaming.
 
     Protocol (from react-native-vision-camera frame processor):
-      - First message:  0x00 prefix + JSON metadata {"type":"metadata","width":N,"height":N,"pixelFormat":"rgba"}
-      - Frame messages: 0x01 prefix + raw RGBA pixel data (width * height * 4 bytes)
+      - First message:  0x00 prefix + JSON metadata
+        {"type":"metadata","width":N,"height":N,"pixelFormat":"rgba"|"nv21"}
+      - Frame messages: 0x01 prefix + raw pixel data
+        • rgba: width * height * 4 bytes
+        • nv21: width * height * 3 // 2 bytes
 
     Also supports legacy JPEG binary messages (no prefix) for backward compatibility.
     """

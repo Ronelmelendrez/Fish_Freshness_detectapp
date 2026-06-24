@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from "react";
-import { runOnJS } from "react-native-reanimated";
+import { useRunOnJS } from "react-native-worklets-core";
 import { useDetectionWebSocket, ConnectionState } from "../services/websocket";
 import { DetectionResponse } from "../types";
 
@@ -102,10 +102,11 @@ export function useFrameStreamer({
   const hasSentMetadataRef2 = hasSentMetadataRef;
 
   /**
-   * Send a raw frame over WebSocket.
+   * Core send logic — runs on JS thread.
+   * We wrap this with useRunOnJS so it can be called from a worklet.
    * First call sends a JSON metadata header; subsequent calls send binary frame data.
    */
-  const sendRawFrame = useCallback(
+  const sendRawFrameImpl = useCallback(
     (buffer: ArrayBuffer, width: number, height: number) => {
       if (!isConnectedRef.current) return;
       if (buffer.byteLength > MAX_BUFFER_SIZE) return; // backpressure: skip oversized frames
@@ -137,6 +138,9 @@ export function useFrameStreamer({
     [],
   );
 
+  // Worklet-safe version: can be called from a frame processor worklet
+  const sendRawFrame = useRunOnJS(sendRawFrameImpl, [sendRawFrameImpl]);
+
   const connect = useCallback(() => {
     hasSentMetadataRef.current = false;
     wsConnect();
@@ -156,7 +160,7 @@ export function useFrameStreamer({
     const processor = (frame: any) => {
       "worklet";
       const buffer = frame.toArrayBuffer();
-      runOnJS(sendRawFrame)(buffer, frame.width, frame.height);
+      sendRawFrame(buffer, frame.width, frame.height);
     };
     return processor;
   }, [sendRawFrame]);
