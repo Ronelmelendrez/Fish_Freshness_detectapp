@@ -10,7 +10,7 @@ from ultralytics import YOLO
 
 from app.models.model_loader import get_model
 from app.services.detection_service import DetectionResult, detect_fish
-from app.utils.image_utils import load_image_from_bytes
+from app.utils.image_utils import load_image_from_bytes, load_raw_frame_to_rgb
 
 logger = logging.getLogger(__name__)
 
@@ -85,50 +85,94 @@ async def detect_stream(
     target_species: Optional[str] = Query(default=None),
     expected_part: Optional[str] = Query(default=None),
 ):
-    """WebSocket endpoint for real-time fish detection streaming."""
+    """
+    WebSocket endpoint for real-time fish detection streaming.
+
+    Protocol (from react-native-vision-camera frame processor):
+      - First message:  0x00 prefix + JSON metadata {"type":"metadata","width":N,"height":N,"pixelFormat":"rgba"}
+      - Frame messages: 0x01 prefix + raw RGBA pixel data (width * height * 4 bytes)
+
+    Also supports legacy JPEG binary messages (no prefix) for backward compatibility.
+    """
     await websocket.accept()
     model = get_model()
     logger.info(
         "[WS] Client connected — species=%s part=%s", target_species, expected_part
     )
 
+    # Frame metadata state (set by first metadata message)
+    frame_width: Optional[int] = None
+    frame_height: Optional[int] = None
+    pixel_format: str = "rgba"
+
     try:
         while True:
-            image_bytes = await websocket.receive_bytes()
+            raw_data = await websocket.receive_bytes()
 
-            if not image_bytes:
+            if not raw_data or len(raw_data) < 1:
                 continue
 
-            try:
-                image_rgb = load_image_from_bytes(image_bytes)
-            except Exception as exc:
-                logger.warning("[WS] Failed to decode image: %s", exc)
-                await websocket.send_text(
-                    json.dumps(
-                        {
-                            "error": "Invalid image",
-                            "detail": str(exc),
-                        }
+            # Check protocol flag byte
+            flag = raw_data[0]
+            payload = raw_data[1:]
+
+            if flag == 0x00:
+                # Metadata message — extract frame dimensions
+                try:
+                    meta = json.loads(payload.decode("utf-8"))
+                    frame_width = meta.get("width")
+                    frame_height = meta.get("height")
+                    pixel_format = meta.get("pixelFormat", "rgba")
+                    logger.info(
+                        "[WS] Frame metadata received: %sx%s format=%s",
+                        frame_width, frame_height, pixel_format,
                     )
-                )
+                except Exception as exc:
+                    logger.warning("[WS] Failed to parse metadata: %s", exc)
+                    await websocket.send_text(
+                        json.dumps({"error": "Invalid metadata", "detail": str(exc)})
+                    )
                 continue
 
+            if flag == 0x01:
+                # Raw frame data message
+                if frame_width is None or frame_height is None:
+                    logger.warning("[WS] Received frame data before metadata")
+                    await websocket.send_text(
+                        json.dumps({"error": "No metadata", "detail": "Send metadata before frame data"})
+                    )
+                    continue
+
+                try:
+                    image_rgb = load_raw_frame_to_rgb(
+                        payload, frame_width, frame_height, pixel_format
+                    )
+                except Exception as exc:
+                    logger.warning("[WS] Failed to decode raw frame: %s", exc)
+                    await websocket.send_text(
+                        json.dumps({"error": "Invalid frame", "detail": str(exc)})
+                    )
+                    continue
+            else:
+                # Legacy mode: treat entire message as JPEG/PNG bytes (no prefix flag)
+                try:
+                    image_rgb = load_image_from_bytes(raw_data)
+                except Exception as exc:
+                    logger.warning("[WS] Failed to decode image: %s", exc)
+                    await websocket.send_text(
+                        json.dumps({"error": "Invalid image", "detail": str(exc)})
+                    )
+                    continue
+
+            # Run YOLO detection
             try:
                 result: DetectionResult = detect_fish(
-                    model,
-                    image_rgb,
-                    target_species,
-                    expected_part,
+                    model, image_rgb, target_species, expected_part
                 )
             except Exception as exc:
                 logger.exception("[WS] Detection failed: %s", exc)
                 await websocket.send_text(
-                    json.dumps(
-                        {
-                            "error": "Detection failed",
-                            "detail": str(exc),
-                        }
-                    )
+                    json.dumps({"error": "Detection failed", "detail": str(exc)})
                 )
                 continue
 
