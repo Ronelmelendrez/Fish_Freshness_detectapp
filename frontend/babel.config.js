@@ -6,12 +6,12 @@ module.exports = function (api) {
       [
         "module-resolver",
         {
-          alias: {
-            "@": "./src",
-          },
+          alias: { "@": "./src" },
           extensions: [".js", ".jsx", ".ts", ".tsx", ".json"],
         },
       ],
+      // ✅ Frame-processor worklet plugin (v5 uses react-native-worklets-core)
+      require.resolve("react-native-worklets-core/plugin"),
     ],
   };
 };
