@@ -1,0 +1,17 @@
+# Exclude the heavy generated native folders
+android/
+ios/
+node_modules/
+
+# Exclude local environment files
+.env
+.env.local
+
+# Exclude IDE and OS files
+.DS_Store
+.vscode/
+.idea/
+
+# Exclude build caches
+.expo/
+dist/
