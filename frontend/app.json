@@ -21,7 +21,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["CAMERA"],
+      "permissions": [
+        "CAMERA"
+      ],
       "package": "com.ronel.fishfreshnessdetectapp"
     },
     "web": {
@@ -44,6 +46,12 @@
     "experiments": {
       "typedRoutes": true,
       "newArchEnabled": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "43a3549c-0b9f-4c14-bb29-9d84fd315df7"
+      }
     }
   }
 }
